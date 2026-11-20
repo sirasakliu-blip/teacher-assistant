@@ -23,6 +23,7 @@ import { parseExcelOrCsv, exportToExcel } from "@/lib/excel-helper";
 import { CreateStudentDialog } from "@/components/create-student-dialog";
 import { TeacherProfileModal } from "@/components/teacher-profile-modal";
 import { AdminScheduleManager } from "@/components/admin-schedule-manager";
+import { CreateClassModal } from "@/components/create-class-modal";
 
 export default function AdminDashboard() {
   const { profile, firebaseUser } = useAuth();
@@ -78,6 +79,7 @@ export default function AdminDashboard() {
   const [togglingToken, setTogglingToken] = useState<string | null>(null);
   const [resettingTokenForStudent, setResettingTokenForStudent] = useState<string | null>(null);
   const [showCreateStudent, setShowCreateStudent] = useState(false);
+  const [showCreateClassModal, setShowCreateClassModal] = useState(false);
   const [showContactModal, setShowContactModal] = useState(false);
   const [editingTeacherUser, setEditingTeacherUser] = useState<User | null>(null);
 
@@ -709,6 +711,12 @@ export default function AdminDashboard() {
             >
               <i className="fa-solid fa-wand-magic-sparkles text-emerald-600" /> ผู้ช่วยสอน AI
             </Link>
+            <button
+              onClick={() => setShowCreateClassModal(true)}
+              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+            >
+              <i className="fa-solid fa-plus" /> สร้างห้องเรียนใหม่
+            </button>
             <button
               onClick={() => setShowContactModal(true)}
               className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:border-emerald-500 hover:text-emerald-700 text-slate-700 text-xs font-semibold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
@@ -1697,6 +1705,13 @@ export default function AdminDashboard() {
         open={showCreateStudent}
         onClose={() => setShowCreateStudent(false)}
         onSuccess={() => loadUsersAndTokens()}
+      />
+
+      <CreateClassModal
+        open={showCreateClassModal}
+        onClose={() => setShowCreateClassModal(false)}
+        onSuccess={() => loadUsersAndTokens()}
+        defaultGrade="ม.2/1"
       />
 
       <TeacherProfileModal

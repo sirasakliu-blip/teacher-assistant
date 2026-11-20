@@ -6,6 +6,9 @@ import { getClassesForTeacher } from "@/lib/firestore";
 import { coverGradient } from "@/lib/covers";
 import { TeacherNav } from "@/components/teacher-nav";
 import { CreateStudentDialog } from "@/components/create-student-dialog";
+import { CreateClassModal } from "@/components/create-class-modal";
+import { TeacherProfileModal } from "@/components/teacher-profile-modal";
+import { StudentSchedulePanel } from "@/components/student-schedule-panel";
 import type { Class } from "@/types";
 
 export default function TeacherHome() {
@@ -14,6 +17,10 @@ export default function TeacherHome() {
   const [classes, setClasses] = useState<Class[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddStudent, setShowAddStudent] = useState(false);
+  const [showCreateClass, setShowCreateClass] = useState(false);
+  const [showContactModal, setShowContactModal] = useState(false);
+
+  const advisorRoom = profile?.advisorRoom || profile?.gradeLevel || "ม.2/1";
 
   async function refresh() {
     if (!profile) return;
@@ -45,6 +52,7 @@ export default function TeacherHome() {
       <TeacherNav />
 
       <main className="relative z-10 max-w-6xl mx-auto px-6 md:px-10 py-10">
+        {/* Top Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8 animate-fade-in-up">
           <div>
             <div className="flex items-center gap-2 mb-1">
@@ -52,18 +60,23 @@ export default function TeacherHome() {
               <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
                 จัดสรรตามชั้นเรียน
               </span>
+              {advisorRoom && (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-teal-50 text-teal-800 border border-teal-200 flex items-center gap-1 shadow-2xs">
+                  <i className="fa-solid fa-chalkboard-user text-teal-600" />
+                  ที่ปรึกษา {advisorRoom}
+                </span>
+              )}
             </div>
             <p className="text-muted-foreground text-sm">
-              ห้องเรียนและรายชื่อนักเรียน
+              ห้องเรียนและรายชื่อนักเรียน &middot; จัดการเช็คชื่อ การบ้าน และใบลา
             </p>
           </div>
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 flex-wrap">
             <button
-              onClick={refresh}
-              className="px-3.5 py-2.5 rounded-xl border border-border bg-card hover:bg-muted text-foreground font-semibold text-xs transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-              title="รีเฟรชข้อมูลห้องเรียน"
+              onClick={() => setShowCreateClass(true)}
+              className="px-4 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs transition flex items-center gap-2 shadow-xs cursor-pointer"
             >
-              <i className="fa-solid fa-arrows-rotate text-primary" /> รีเฟรช
+              <i className="fa-solid fa-plus" /> สร้างห้องเรียนใหม่
             </button>
             <button
               onClick={() => setShowAddStudent(true)}
@@ -71,7 +84,69 @@ export default function TeacherHome() {
             >
               <i className="fa-solid fa-user-plus" /> เพิ่มบัญชีนักเรียน
             </button>
+            <button
+              onClick={refresh}
+              className="px-3.5 py-2.5 rounded-xl border border-border bg-card hover:bg-muted text-foreground font-semibold text-xs transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+              title="รีเฟรชข้อมูลห้องเรียน"
+            >
+              <i className="fa-solid fa-arrows-rotate text-primary" /> รีเฟรช
+            </button>
           </div>
+        </div>
+
+        {/* Advisor Student Schedule Section */}
+        <div className="mb-10 animate-fade-in-up">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+            <div>
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <span className="w-8 h-8 rounded-xl bg-teal-500/10 text-teal-600 flex items-center justify-center text-sm font-bold">
+                  <i className="fa-solid fa-calendar-days" />
+                </span>
+                <h2 className="text-xl font-bold text-foreground">
+                  ตารางเรียนนักเรียนห้องที่ปรึกษา ({advisorRoom})
+                </h2>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-teal-50 text-teal-800 border border-teal-200">
+                  ครูที่ปรึกษา
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                ตารางเรียนประจำวันของนักเรียนในความดูแลชั้น {advisorRoom} &middot; ตรวจสอบคาบเรียน ครูผู้สอน และห้องเรียน
+              </p>
+            </div>
+
+            <button
+              onClick={() => setShowContactModal(true)}
+              className="px-3.5 py-2 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground transition flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
+            >
+              <i className="fa-solid fa-pen-to-square text-teal-600" />
+              <span>แก้ไขห้องที่ปรึกษา</span>
+            </button>
+          </div>
+
+          <StudentSchedulePanel
+            gradeLevel={advisorRoom}
+            studentClasses={classes}
+          />
+        </div>
+
+        {/* Classes Section Header */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <span className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center text-sm">
+              <i className="fa-solid fa-chalkboard text-xs" />
+            </span>
+            <h2 className="text-lg font-bold text-foreground">รายชื่อห้องเรียนที่รับผิดชอบ</h2>
+            <span className="text-xs px-2.5 py-0.5 rounded-full bg-muted text-muted-foreground font-semibold">
+              {classes.length} ห้อง
+            </span>
+          </div>
+
+          <button
+            onClick={() => setShowCreateClass(true)}
+            className="text-xs font-semibold text-primary hover:underline flex items-center gap-1 cursor-pointer"
+          >
+            <i className="fa-solid fa-plus text-[10px]" /> เพิ่มห้องเรียน
+          </button>
         </div>
 
         {loading ? (
@@ -84,15 +159,23 @@ export default function TeacherHome() {
               <i className="fa-solid fa-chalkboard" />
             </div>
             <h3 className="text-xl font-bold text-foreground mb-2">ยังไม่มีห้องเรียนในระบบ</h3>
-            <p className="text-muted-foreground text-sm max-w-md mx-auto mb-4">
-              ห้องเรียนจะถูกสร้างและจัดสรรตามชั้นเรียนโดยอัตโนมัติ
+            <p className="text-muted-foreground text-sm max-w-md mx-auto mb-6">
+              คุณสามารถกดปุ่มสร้างห้องเรียนใหม่ หรือรอระบบจัดสรรห้องเรียนอัตโนมัติจากไฟล์ Excel
             </p>
-            <button
-              onClick={refresh}
-              className="px-5 py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-xs hover:bg-primary/90 transition-all cursor-pointer inline-flex items-center gap-2"
-            >
-              <i className="fa-solid fa-arrows-rotate" /> ตรวจสอบห้องเรียนอีกครั้ง
-            </button>
+            <div className="flex items-center justify-center gap-3">
+              <button
+                onClick={() => setShowCreateClass(true)}
+                className="px-5 py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-xs hover:bg-primary/90 transition-all cursor-pointer inline-flex items-center gap-2 shadow-sm"
+              >
+                <i className="fa-solid fa-plus" /> สร้างห้องเรียนใหม่
+              </button>
+              <button
+                onClick={refresh}
+                className="px-4 py-2.5 rounded-xl border border-border bg-card text-foreground font-semibold text-xs hover:bg-muted transition-all cursor-pointer inline-flex items-center gap-2"
+              >
+                <i className="fa-solid fa-arrows-rotate" /> ตรวจสอบห้องเรียน
+              </button>
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -135,9 +218,22 @@ export default function TeacherHome() {
         )}
       </main>
 
+      <CreateClassModal
+        open={showCreateClass}
+        onClose={() => setShowCreateClass(false)}
+        onSuccess={refresh}
+        defaultGrade={advisorRoom}
+      />
+
       <CreateStudentDialog
         open={showAddStudent}
         onClose={() => setShowAddStudent(false)}
+        onSuccess={refresh}
+      />
+
+      <TeacherProfileModal
+        open={showContactModal}
+        onClose={() => setShowContactModal(false)}
         onSuccess={refresh}
       />
     </div>
