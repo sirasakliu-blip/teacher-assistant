@@ -6,19 +6,30 @@ import { lookupThaiPostalCode } from "@/lib/thai-geo";
 import type { User as FirebaseUser } from "firebase/auth";
 
 export default function Register() {
-  const { registerTeacherWithGoogle, selectGoogleAccount, firebaseUser, profile, loading } = useAuth();
+  const {
+    registerTeacherWithEmail,
+    registerTeacherWithGoogle,
+    selectGoogleAccount,
+    firebaseUser,
+    profile,
+    loading,
+  } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
-  // School & Location state
+  // 1. School & Location state (ย้ายโรงเรียนขึ้นบนสุด + ใส่จังหวัด อำเภอ ตำบล)
+  const [schoolName, setSchoolName] = useState("");
+  const [affiliation, setAffiliation] = useState("สพฐ.");
   const [postalCode, setPostalCode] = useState("");
   const [province, setProvince] = useState("");
   const [district, setDistrict] = useState("");
-  const [schoolName, setSchoolName] = useState("");
-  const [affiliation, setAffiliation] = useState("สพฐ.");
+  const [subDistrict, setSubDistrict] = useState("");
   const [detectedLocation, setDetectedLocation] = useState<string | null>(null);
 
-  // Google Account & Teacher details
+  // 2. Teacher Credentials & Invite Code
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [selectedGoogleUser, setSelectedGoogleUser] = useState<FirebaseUser | null>(null);
   const [selectingGoogle, setSelectingGoogle] = useState(false);
   const [displayName, setDisplayName] = useState("");
@@ -61,12 +72,15 @@ export default function Register() {
     try {
       const user = await selectGoogleAccount();
       setSelectedGoogleUser(user);
+      if (user.email) {
+        setEmail(user.email);
+      }
       if (!displayName.trim() && user.displayName) {
         setDisplayName(user.displayName);
       }
       toast({
         title: "เชื่อมต่อบัญชี Google แล้ว",
-        description: `อีเมล: ${user.email}`,
+        description: `อีเมล: ${user.email} (กรุณากำหนดรหัสผ่านด้านล่างเพื่อใช้ล็อกอินด้วยอีเมล)`,
       });
     } catch (err: any) {
       console.error("Google selection error:", err);
@@ -93,11 +107,39 @@ export default function Register() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
 
-    if (!selectedGoogleUser) {
+    const cleanEmail = email.trim();
+    if (!cleanEmail) {
       toast({
         variant: "destructive",
-        title: "กรุณาเลือกบัญชี Google",
-        description: "กดปุ่ม 'ลงชื่อเข้าใช้ด้วย Google' เพื่อเชื่อมต่อบัญชีสถานศึกษาของคุณ",
+        title: "กรุณาระบุอีเมล",
+        description: "กรอกอีเมล หรือกด 'ลงชื่อเข้าใช้ด้วย Google' เพื่อดึงอีเมลอัตโนมัติ",
+      });
+      return;
+    }
+
+    if (!password) {
+      toast({
+        variant: "destructive",
+        title: "กรุณากำหนดรหัสผ่าน",
+        description: "กำหนดรหัสผ่านอย่างน้อย 6 ตัวอักษร เพื่อใช้เข้าสู่ระบบด้วยอีเมล",
+      });
+      return;
+    }
+
+    if (password.length < 6) {
+      toast({
+        variant: "destructive",
+        title: "รหัสผ่านสั้นเกินไป",
+        description: "รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร",
+      });
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      toast({
+        variant: "destructive",
+        title: "รหัสผ่านไม่ตรงกัน",
+        description: "กรุณาตรวจสอบการยืนยันรหัสผ่านอีกครั้ง",
       });
       return;
     }
@@ -106,6 +148,7 @@ export default function Register() {
       toast({
         variant: "destructive",
         title: "กรุณาระบุชื่อ-นามสกุล",
+        description: "กรุณากรอกชื่อและนามสกุลจริงพร้อมคำนำหน้า",
       });
       return;
     }
@@ -121,16 +164,35 @@ export default function Register() {
 
     setSubmitting(true);
     try {
-      await registerTeacherWithGoogle(selectedGoogleUser, displayName.trim(), inviteCode.trim(), {
+      const schoolInfo = {
         schoolName: schoolName.trim() || undefined,
         postalCode: postalCode.trim() || undefined,
         province: province.trim() || undefined,
         district: district.trim() || undefined,
-      });
+        subDistrict: subDistrict.trim() || undefined,
+      };
+
+      if (selectedGoogleUser) {
+        await registerTeacherWithGoogle(
+          selectedGoogleUser,
+          displayName.trim(),
+          inviteCode.trim(),
+          schoolInfo,
+          password
+        );
+      } else {
+        await registerTeacherWithEmail(
+          cleanEmail,
+          password,
+          displayName.trim(),
+          inviteCode.trim(),
+          schoolInfo
+        );
+      }
 
       toast({
         title: "ลงทะเบียนบุคลากรสำเร็จ",
-        description: `ยินดีต้อนรับ ${displayName} สู่ระบบ EduConnect360`,
+        description: `ยินดีต้อนรับ ${displayName} สู่ระบบ EduConnect360 (สามารถใช้รหัสผ่านนี้ล็อกอินได้)`,
       });
       setLocation("/teacher");
     } catch (err) {
@@ -171,83 +233,35 @@ export default function Register() {
             ลงทะเบียนสำหรับครูและบุคลากร
           </h1>
           <p className="text-muted-foreground text-xs sm:text-sm mb-6">
-            ระบุข้อมูลสังกัดสถานศึกษาและเชื่อมต่อบัญชี Google ขององค์กร
+            ระบุข้อมูลสถานศึกษาและสร้างบัญชีผู้ใช้งานเพื่อเข้าสู่ระบบ
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Section 1: School & Location Information (อยู่บนสุดตามคำขอ) */}
+            {/* Section 1: ข้อมูลสถานศึกษาและพื้นที่ตั้ง (ย้ายโรงเรียนขึ้นบนสุด + ใส่จังหวัด อำเภอ ตำบล) */}
             <div className="p-4 rounded-2xl bg-muted/40 border border-border/80 space-y-3.5">
               <div className="flex items-center gap-2 text-xs font-bold text-foreground pb-1 border-b border-border/40">
                 <i className="fa-solid fa-school-flag text-primary" />
-                <span>ข้อมูลสถานศึกษาและพื้นที่ตั้ง (ตรวจตามรหัสไปรษณีย์)</span>
+                <span>ข้อมูลสถานศึกษาและพื้นที่ตั้ง</span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-start">
-                {/* รหัสไปรษณีย์ */}
-                <div>
-                  <label className="block text-xs font-semibold text-foreground mb-1.5">
-                    รหัสไปรษณีย์สถานศึกษา
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      maxLength={5}
-                      value={postalCode}
-                      onChange={(e) => handlePostalCodeChange(e.target.value)}
-                      placeholder="เช่น 10330 หรือ 50000"
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground font-mono text-sm placeholder:font-sans placeholder:text-muted-foreground/60 transition"
-                    />
-                    <i className="fa-solid fa-map-pin absolute right-3.5 top-3.5 text-muted-foreground/60 text-xs pointer-events-none" />
-                  </div>
-                </div>
-
-                {/* จังหวัด / อำเภอ ที่ตรวจพบ */}
-                <div>
-                  <label className="block text-xs font-semibold text-foreground mb-1.5">
-                    จังหวัด / พื้นที่
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={province}
-                      onChange={(e) => setProvince(e.target.value)}
-                      placeholder="ตรวจพบอัตโนมัติ"
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm placeholder:text-muted-foreground/60 transition"
-                    />
-                    <i className="fa-solid fa-location-dot absolute right-3.5 top-3.5 text-muted-foreground/60 text-xs pointer-events-none" />
-                  </div>
-                </div>
-              </div>
-
-              {detectedLocation ? (
-                <div className="px-3.5 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 text-xs flex items-center gap-2 animate-in fade-in">
-                  <i className="fa-solid fa-circle-check text-emerald-600 shrink-0 text-xs" />
-                  <span>
-                    พื้นที่ที่ตรวจพบ: <strong>{detectedLocation}</strong>
-                  </span>
-                </div>
-              ) : (
-                <div className="px-3 py-1.5 rounded-xl bg-muted/60 text-muted-foreground text-[11px] flex items-center gap-1.5">
-                  <i className="fa-solid fa-wand-magic-sparkles text-primary text-[10px]" />
-                  <span>ระบบจะตรวจหาจังหวัดและอำเภอให้อัตโนมัติเมื่อพิมพ์รหัสไปรษณีย์</span>
-                </div>
-              )}
-
-              {/* ชื่อโรงเรียน / สถานศึกษา */}
+              {/* 1. ชื่อโรงเรียน / สถานศึกษา (บนสุดตามคำขอ) */}
               <div>
                 <label className="block text-xs font-semibold text-foreground mb-1.5">
                   ชื่อโรงเรียน / สถานศึกษา
                 </label>
-                <input
-                  type="text"
-                  value={schoolName}
-                  onChange={(e) => setSchoolName(e.target.value)}
-                  placeholder="เช่น โรงเรียนสวนกุหลาบวิทยาลัย, โรงเรียนสาธิต..."
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm placeholder:text-muted-foreground/60"
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={schoolName}
+                    onChange={(e) => setSchoolName(e.target.value)}
+                    placeholder="เช่น โรงเรียนสวนกุหลาบวิทยาลัย, โรงเรียนสาธิต..."
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm placeholder:text-muted-foreground/60 transition"
+                  />
+                  <i className="fa-solid fa-school absolute right-3.5 top-3.5 text-muted-foreground/60 text-xs pointer-events-none" />
+                </div>
               </div>
 
-              {/* สังกัดสถานศึกษา */}
+              {/* 2. สังกัดสถานศึกษา */}
               <div>
                 <label className="block text-xs font-semibold text-foreground mb-1.5">
                   สังกัดการศึกษา
@@ -266,12 +280,91 @@ export default function Register() {
                   <option value="อื่นๆ">อื่นๆ</option>
                 </select>
               </div>
+
+              {/* 3. รหัสไปรษณีย์ & จังหวัด (แถวคู่ที่ 1 สมมาตร) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-start">
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1.5">
+                    รหัสไปรษณีย์สถานศึกษา
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      maxLength={5}
+                      value={postalCode}
+                      onChange={(e) => handlePostalCodeChange(e.target.value)}
+                      placeholder="เช่น 10330 หรือ 50000"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground font-mono text-sm placeholder:font-sans placeholder:text-muted-foreground/60 transition"
+                    />
+                    <i className="fa-solid fa-map-pin absolute right-3.5 top-3.5 text-muted-foreground/60 text-xs pointer-events-none" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1.5">
+                    จังหวัด
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={province}
+                      onChange={(e) => setProvince(e.target.value)}
+                      placeholder="ตรวจพบอัตโนมัติ"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm placeholder:text-muted-foreground/60 transition"
+                    />
+                    <i className="fa-solid fa-location-dot absolute right-3.5 top-3.5 text-muted-foreground/60 text-xs pointer-events-none" />
+                  </div>
+                </div>
+              </div>
+
+              {/* 4. อำเภอ & ตำบล (แถวคู่ที่ 2 ตามคำขอ) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-start">
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1.5">
+                    อำเภอ / เขต
+                  </label>
+                  <input
+                    type="text"
+                    value={district}
+                    onChange={(e) => setDistrict(e.target.value)}
+                    placeholder="เช่น ปทุมวัน หรือ เมือง"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm placeholder:text-muted-foreground/60 transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1.5">
+                    ตำบล / แขวง
+                  </label>
+                  <input
+                    type="text"
+                    value={subDistrict}
+                    onChange={(e) => setSubDistrict(e.target.value)}
+                    placeholder="เช่น วังใหม่ หรือ สุเทพ"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm placeholder:text-muted-foreground/60 transition"
+                  />
+                </div>
+              </div>
+
+              {detectedLocation ? (
+                <div className="px-3.5 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 text-xs flex items-center gap-2 animate-in fade-in">
+                  <i className="fa-solid fa-circle-check text-emerald-600 shrink-0 text-xs" />
+                  <span>
+                    พื้นที่ที่ตรวจพบ: <strong>{detectedLocation}</strong>
+                  </span>
+                </div>
+              ) : (
+                <div className="px-3 py-1.5 rounded-xl bg-muted/60 text-muted-foreground text-[11px] flex items-center gap-1.5">
+                  <i className="fa-solid fa-wand-magic-sparkles text-primary text-[10px]" />
+                  <span>ระบบจะตรวจหาจังหวัดและอำเภอให้อัตโนมัติเมื่อพิมพ์รหัสไปรษณีย์</span>
+                </div>
+              )}
             </div>
 
-            {/* Section 2: Google Account Selection (แทนการพิมพ์อีเมลและรหัสผ่าน) */}
+            {/* Section 2: Google Account Fast Connect (ตัวเลือกสะดวก) */}
             <div className="rounded-2xl p-4 bg-muted/40 border border-border/80 text-center space-y-3">
               <p className="text-xs text-muted-foreground font-medium flex items-center justify-center gap-1.5">
-                <span className="text-primary text-sm">✦</span> ใช้บัญชี Google ขององค์กรเพื่อเข้าใช้งาน
+                <span className="text-primary text-sm">✦</span> ดึงอีเมลและชื่อจาก Google ขององค์กร (ทางเลือก)
               </p>
 
               {!selectedGoogleUser ? (
@@ -279,7 +372,7 @@ export default function Register() {
                   type="button"
                   onClick={handleSelectGoogle}
                   disabled={selectingGoogle}
-                  className="w-full py-3.5 px-4 rounded-xl border border-border bg-white hover:bg-slate-50 dark:bg-card dark:hover:bg-accent text-slate-800 dark:text-foreground font-semibold text-sm transition-all duration-200 shadow-sm flex items-center justify-center gap-3 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-60 cursor-pointer"
+                  className="w-full py-3 px-4 rounded-xl border border-border bg-white hover:bg-slate-50 dark:bg-card dark:hover:bg-accent text-slate-800 dark:text-foreground font-semibold text-xs sm:text-sm transition-all duration-200 shadow-sm flex items-center justify-center gap-3 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-60 cursor-pointer"
                 >
                   {selectingGoogle ? (
                     <>
@@ -288,7 +381,7 @@ export default function Register() {
                     </>
                   ) : (
                     <>
-                      <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+                      <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
                         <path
                           fill="#4285F4"
                           d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -306,14 +399,14 @@ export default function Register() {
                           d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                         />
                       </svg>
-                      <span>ลงชื่อเข้าใช้ด้วย Google</span>
+                      <span>เชื่อมต่อด้วย Google เพื่อดึงข้อมูล</span>
                     </>
                   )}
                 </button>
               ) : (
                 <div className="flex items-center justify-between p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 text-left">
                   <div className="flex items-center gap-3 overflow-hidden">
-                    <div className="w-10 h-10 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shrink-0 overflow-hidden">
+                    <div className="w-9 h-9 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shrink-0 overflow-hidden">
                       {selectedGoogleUser.photoURL ? (
                         <img
                           src={selectedGoogleUser.photoURL}
@@ -332,7 +425,7 @@ export default function Register() {
                         <i className="fa-solid fa-circle-check text-emerald-600 text-xs shrink-0" />
                       </div>
                       <span className="text-[11px] text-emerald-700/80 dark:text-emerald-300 block">
-                        เชื่อมต่อบัญชี Google เรียบร้อย
+                        ดึงอีเมลจาก Google สำเร็จ
                       </span>
                     </div>
                   </div>
@@ -347,41 +440,104 @@ export default function Register() {
               )}
             </div>
 
-            {/* Section 3: Teacher Display Name */}
-            <div>
-              <label className="block text-xs font-semibold text-foreground mb-1.5">
-                ชื่อ-นามสกุล (พร้อมคำนำหน้า)
-              </label>
-              <input
-                type="text"
-                required
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="เช่น อาจารย์สมคิด จิตมั่นคง"
-                className="w-full px-4 py-2.5 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm placeholder:text-muted-foreground/70"
-              />
-            </div>
-
-            {/* Section 4: Teacher Invite Code */}
-            <div>
-              <label className="block text-xs font-semibold text-foreground mb-1.5 flex items-center justify-between">
-                <span>รหัสลงทะเบียนบุคลากร (Teacher Invite Code)</span>
-                <span className="text-[11px] font-normal text-muted-foreground">ใช้ได้ 1 ครั้ง</span>
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  required
-                  value={inviteCode}
-                  onChange={(e) => setInviteCode(e.target.value.toUpperCase().replace(/\s+/g, ""))}
-                  placeholder="เช่น TCH-XXXX-XX"
-                  className="w-full px-4 py-2.5 rounded-xl bg-primary/5 border border-primary/30 focus:outline-none focus:ring-2 focus:ring-primary text-foreground font-mono uppercase tracking-wider placeholder:normal-case placeholder:tracking-normal placeholder:font-sans placeholder:text-muted-foreground/60 text-sm"
-                />
-                <i className="fa-solid fa-key absolute right-3.5 top-3 text-muted-foreground/60 text-xs" />
+            {/* Section 3: ข้อมูลบัญชีและรหัสผ่านสำหรับเข้าสู่ระบบ (ตามคำขอ) */}
+            <div className="space-y-3.5 pt-1">
+              {/* อีเมล */}
+              <div>
+                <label className="block text-xs font-semibold text-foreground mb-1.5">
+                  อีเมลสำหรับเข้าสู่ระบบ
+                </label>
+                <div className="relative">
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="teacher@school.ac.th"
+                    className="w-full px-4 py-2.5 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm placeholder:text-muted-foreground/70"
+                  />
+                  <i className="fa-solid fa-envelope absolute right-3.5 top-3.5 text-muted-foreground/60 text-xs pointer-events-none" />
+                </div>
               </div>
-              <p className="text-[11px] text-muted-foreground mt-1">
-                ขอรับรหัสได้จากผู้ดูแลระบบสถานศึกษา (Admin)
-              </p>
+
+              {/* รหัสผ่าน & ยืนยันรหัสผ่าน (เพิ่มช่องรหัสผ่านตามภาพ 2) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-start">
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1.5">
+                    รหัสผ่าน (อย่างน้อย 6 ตัวอักษร)
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="password"
+                      required
+                      minLength={6}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full px-4 py-2.5 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm placeholder:text-muted-foreground/70"
+                    />
+                    <i className="fa-solid fa-lock absolute right-3.5 top-3.5 text-muted-foreground/60 text-xs pointer-events-none" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1.5">
+                    ยืนยันรหัสผ่าน
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="password"
+                      required
+                      minLength={6}
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full px-4 py-2.5 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm placeholder:text-muted-foreground/70"
+                    />
+                    <i className="fa-solid fa-shield-check absolute right-3.5 top-3.5 text-muted-foreground/60 text-xs pointer-events-none" />
+                  </div>
+                </div>
+              </div>
+
+              {/* ชื่อ-นามสกุล */}
+              <div>
+                <label className="block text-xs font-semibold text-foreground mb-1.5">
+                  ชื่อ-นามสกุล (พร้อมคำนำหน้า)
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    placeholder="เช่น อาจารย์สมคิด จิตมั่นคง"
+                    className="w-full px-4 py-2.5 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm placeholder:text-muted-foreground/70"
+                  />
+                  <i className="fa-solid fa-user absolute right-3.5 top-3.5 text-muted-foreground/60 text-xs pointer-events-none" />
+                </div>
+              </div>
+
+              {/* รหัสลงทะเบียนบุคลากร */}
+              <div>
+                <label className="block text-xs font-semibold text-foreground mb-1.5 flex items-center justify-between">
+                  <span>รหัสลงทะเบียนบุคลากร (Teacher Invite Code)</span>
+                  <span className="text-[11px] font-normal text-muted-foreground">ใช้ได้ 1 ครั้ง</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    value={inviteCode}
+                    onChange={(e) => setInviteCode(e.target.value.toUpperCase().replace(/\s+/g, ""))}
+                    placeholder="เช่น TCH-XXXX-XX"
+                    className="w-full px-4 py-2.5 rounded-xl bg-primary/5 border border-primary/30 focus:outline-none focus:ring-2 focus:ring-primary text-foreground font-mono uppercase tracking-wider placeholder:normal-case placeholder:tracking-normal placeholder:font-sans placeholder:text-muted-foreground/60 text-sm"
+                  />
+                  <i className="fa-solid fa-key absolute right-3.5 top-3 text-muted-foreground/60 text-xs" />
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  ขอรับรหัสได้จากผู้ดูแลระบบสถานศึกษา (Admin)
+                </p>
+              </div>
             </div>
 
             <button

@@ -27,6 +27,7 @@ export interface User {
   postalCode?: string; // e.g. "10330"
   province?: string; // e.g. "กรุงเทพมหานคร"
   district?: string; // e.g. "เขตปทุมวัน"
+  subDistrict?: string; // e.g. "แขวงวังใหม่"
   parentViewToken?: string; // Token for parent access
   inviteCodeUsed?: string; // The teacher invite code used to register
   linkedStudentIds?: string[]; // Student UIDs linked to parent account

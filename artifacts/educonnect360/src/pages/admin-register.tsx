@@ -13,6 +13,7 @@ export default function AdminRegister() {
   const [postalCode, setPostalCode] = useState("");
   const [province, setProvince] = useState("");
   const [district, setDistrict] = useState("");
+  const [subDistrict, setSubDistrict] = useState("");
   const [schoolName, setSchoolName] = useState("");
   const [affiliation, setAffiliation] = useState("สพฐ.");
   const [detectedLocation, setDetectedLocation] = useState<string | null>(null);
@@ -63,6 +64,7 @@ export default function AdminRegister() {
         postalCode: postalCode.trim() || undefined,
         province: province.trim() || undefined,
         district: district.trim() || undefined,
+        subDistrict: subDistrict.trim() || undefined,
       });
       toast({
         title: "ลงทะเบียนผู้ดูแลระบบสำเร็จ",
@@ -117,13 +119,51 @@ export default function AdminRegister() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* School & Location Section (อยู่บนสุดตามคำขอ ตรวจพื้นที่ด้วยเลขไปรษณีย์) */}
+            {/* School & Location Section (ย้ายโรงเรียนขึ้นบนสุด + ใส่จังหวัด อำเภอ ตำบล) */}
             <div className="p-4 rounded-2xl bg-muted/40 border border-border/80 space-y-3.5">
               <div className="flex items-center gap-2 text-xs font-bold text-foreground pb-1 border-b border-border/40">
                 <i className="fa-solid fa-school-flag text-primary" />
-                <span>ข้อมูลสถานศึกษาและพื้นที่ตั้ง (ตรวจตามรหัสไปรษณีย์)</span>
+                <span>ข้อมูลสถานศึกษาและพื้นที่ตั้ง</span>
               </div>
 
+              {/* 1. ชื่อโรงเรียน / สถานศึกษา (บนสุดตามคำขอ) */}
+              <div>
+                <label className="block text-xs font-semibold text-foreground mb-1.5">
+                  ชื่อโรงเรียน / สถานศึกษา
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={schoolName}
+                    onChange={(e) => setSchoolName(e.target.value)}
+                    placeholder="เช่น โรงเรียนสวนกุหลาบวิทยาลัย, โรงเรียนสาธิต..."
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm placeholder:text-muted-foreground/60 transition"
+                  />
+                  <i className="fa-solid fa-school absolute right-3.5 top-3.5 text-muted-foreground/60 text-xs pointer-events-none" />
+                </div>
+              </div>
+
+              {/* 2. สังกัดสถานศึกษา */}
+              <div>
+                <label className="block text-xs font-semibold text-foreground mb-1.5">
+                  สังกัดการศึกษา
+                </label>
+                <select
+                  value={affiliation}
+                  onChange={(e) => setAffiliation(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm"
+                >
+                  <option value="สพฐ.">สำนักงานคณะกรรมการการศึกษาขั้นพื้นฐาน (สพฐ.)</option>
+                  <option value="สช.">สำนักงานคณะกรรมการส่งเสริมการศึกษาเอกชน (สช.)</option>
+                  <option value="กทม.">กรุงเทพมหานคร (กทม.)</option>
+                  <option value="อปท.">องค์กรปกครองส่วนท้องถิ่น (อปท.)</option>
+                  <option value="สอศ.">สำนักงานคณะกรรมการการอาชีวศึกษา (สอศ.)</option>
+                  <option value="อุดมศึกษา">สถาบันอุดมศึกษา / มหาวิทยาลัย</option>
+                  <option value="อื่นๆ">อื่นๆ</option>
+                </select>
+              </div>
+
+              {/* 3. รหัสไปรษณีย์ & จังหวัด (แถวคู่ที่ 1 สมมาตร) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-start">
                 <div>
                   <label className="block text-xs font-semibold text-foreground mb-1.5">
@@ -144,7 +184,7 @@ export default function AdminRegister() {
 
                 <div>
                   <label className="block text-xs font-semibold text-foreground mb-1.5">
-                    จังหวัด / พื้นที่
+                    จังหวัด
                   </label>
                   <div className="relative">
                     <input
@@ -156,6 +196,35 @@ export default function AdminRegister() {
                     />
                     <i className="fa-solid fa-location-dot absolute right-3.5 top-3.5 text-muted-foreground/60 text-xs pointer-events-none" />
                   </div>
+                </div>
+              </div>
+
+              {/* 4. อำเภอ & ตำบล (แถวคู่ที่ 2 ตามคำขอ) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-start">
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1.5">
+                    อำเภอ / เขต
+                  </label>
+                  <input
+                    type="text"
+                    value={district}
+                    onChange={(e) => setDistrict(e.target.value)}
+                    placeholder="เช่น ปทุมวัน หรือ เมือง"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm placeholder:text-muted-foreground/60 transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1.5">
+                    ตำบล / แขวง
+                  </label>
+                  <input
+                    type="text"
+                    value={subDistrict}
+                    onChange={(e) => setSubDistrict(e.target.value)}
+                    placeholder="เช่น วังใหม่ หรือ สุเทพ"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm placeholder:text-muted-foreground/60 transition"
+                  />
                 </div>
               </div>
 
@@ -172,38 +241,6 @@ export default function AdminRegister() {
                   <span>ระบบจะตรวจหาจังหวัดและอำเภอให้อัตโนมัติเมื่อพิมพ์รหัสไปรษณีย์</span>
                 </div>
               )}
-
-              <div>
-                <label className="block text-xs font-semibold text-foreground mb-1.5">
-                  ชื่อโรงเรียน / สถานศึกษา
-                </label>
-                <input
-                  type="text"
-                  value={schoolName}
-                  onChange={(e) => setSchoolName(e.target.value)}
-                  placeholder="เช่น โรงเรียนสวนกุหลาบวิทยาลัย, โรงเรียนสาธิต..."
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm placeholder:text-muted-foreground/60"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-foreground mb-1.5">
-                  สังกัดการศึกษา
-                </label>
-                <select
-                  value={affiliation}
-                  onChange={(e) => setAffiliation(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm"
-                >
-                  <option value="สพฐ.">สำนักงานคณะกรรมการการศึกษาขั้นพื้นฐาน (สพฐ.)</option>
-                  <option value="สช.">สำนักงานคณะกรรมการส่งเสริมการศึกษาเอกชน (สช.)</option>
-                  <option value="กทม.">กรุงเทพมหานคร (กทม.)</option>
-                  <option value="อปท.">องค์กรปกครองส่วนท้องถิ่น (อปท.)</option>
-                  <option value="สอศ.">สำนักงานคณะกรรมการการอาชีวศึกษา (สอศ.)</option>
-                  <option value="อุดมศึกษา">สถาบันอุดมศึกษา / มหาวิทยาลัย</option>
-                  <option value="อื่นๆ">อื่นๆ</option>
-                </select>
-              </div>
             </div>
 
             {/* Admin Profile Section */}

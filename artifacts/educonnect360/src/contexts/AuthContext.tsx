@@ -14,6 +14,7 @@ import {
   signInWithPopup,
   signOut,
   updateProfile,
+  updatePassword,
   type User as FirebaseUser,
 } from "firebase/auth";
 import { doc, getDoc, runTransaction, serverTimestamp, setDoc } from "firebase/firestore";
@@ -46,6 +47,7 @@ interface AuthContextValue {
       postalCode?: string;
       province?: string;
       district?: string;
+      subDistrict?: string;
     },
   ) => Promise<void>;
   resendVerificationEmail: () => Promise<void>;
@@ -53,6 +55,19 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
   selectGoogleAccount: () => Promise<FirebaseUser>;
+  registerTeacherWithEmail: (
+    email: string,
+    password: string,
+    displayName: string,
+    inviteCode: string,
+    schoolInfo?: {
+      schoolName?: string;
+      postalCode?: string;
+      province?: string;
+      district?: string;
+      subDistrict?: string;
+    },
+  ) => Promise<void>;
   registerTeacherWithGoogle: (
     user: FirebaseUser,
     displayName: string,
@@ -62,7 +77,9 @@ interface AuthContextValue {
       postalCode?: string;
       province?: string;
       district?: string;
+      subDistrict?: string;
     },
+    password?: string,
   ) => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -273,6 +290,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       postalCode: schoolInfo?.postalCode || "",
       province: schoolInfo?.province || "",
       district: schoolInfo?.district || "",
+      subDistrict: schoolInfo?.subDistrict || "",
       linkedStudentIds: [],
       photoURL: null,
       createdAt: serverTimestamp(),
@@ -353,6 +371,77 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return credential.user;
   }
 
+  async function registerTeacherWithEmail(
+    email: string,
+    password: string,
+    displayName: string,
+    inviteCode: string,
+    schoolInfo?: {
+      schoolName?: string;
+      postalCode?: string;
+      province?: string;
+      district?: string;
+      subDistrict?: string;
+    },
+  ) {
+    if (!auth || !db) throw new Error("Firebase is not configured.");
+
+    const cleanEmail = (email || "").trim().toLowerCase();
+    const cleanCode = (inviteCode || "").trim().toUpperCase();
+
+    if (!cleanEmail) throw new Error("กรุณากรอกอีเมล");
+    if (!password || password.length < 6) throw new Error("รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร");
+    if (!cleanCode) throw new Error("กรุณากรอกรหัสลงทะเบียนบุคลากร");
+
+    const inviteRef = doc(db, "teacher_invites", cleanCode);
+    const inviteSnap = await getDoc(inviteRef);
+    if (!inviteSnap.exists() || inviteSnap.data()?.isUsed === true) {
+      throw new Error("ไม่พบรหัสลงทะเบียนบุคลากร หรือรหัสนี้ถูกใช้งานไปแล้ว");
+    }
+
+    const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+    const user = cred.user;
+
+    await updateProfile(user, { displayName });
+
+    await runTransaction(db, async (transaction) => {
+      const freshInviteSnap = await transaction.get(inviteRef);
+      if (!freshInviteSnap.exists() || freshInviteSnap.data()?.isUsed === true) {
+        throw new Error("ไม่พบรหัสลงทะเบียนบุคลากร หรือรหัสนี้ถูกใช้งานไปแล้ว");
+      }
+
+      const userRef = doc(db, "users", user.uid);
+      transaction.set(userRef, {
+        uid: user.uid,
+        email: cleanEmail,
+        displayName,
+        fullName: displayName,
+        role: "teacher",
+        inviteCodeUsed: cleanCode,
+        schoolName: schoolInfo?.schoolName || "",
+        postalCode: schoolInfo?.postalCode || "",
+        province: schoolInfo?.province || "",
+        district: schoolInfo?.district || "",
+        subDistrict: schoolInfo?.subDistrict || "",
+        linkedStudentIds: [],
+        photoURL: null,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      transaction.update(inviteRef, {
+        isUsed: true,
+        usedByUid: user.uid,
+        usedByName: displayName,
+        usedAt: serverTimestamp(),
+      });
+    });
+
+    const userProfile = await getUserProfile(user.uid);
+    setFirebaseUser(user);
+    setProfile(userProfile);
+  }
+
   async function registerTeacherWithGoogle(
     user: FirebaseUser,
     displayName: string,
@@ -362,7 +451,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       postalCode?: string;
       province?: string;
       district?: string;
+      subDistrict?: string;
     },
+    password?: string,
   ) {
     if (!auth || !db) throw new Error("Firebase is not configured.");
 
@@ -378,6 +469,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     await updateProfile(user, { displayName });
+
+    if (password && password.length >= 6) {
+      try {
+        await updatePassword(user, password);
+      } catch (pwErr) {
+        console.warn("Could not set password for Google account:", pwErr);
+      }
+    }
 
     // Atomically create user profile and consume invite code
     await runTransaction(db, async (transaction) => {
@@ -398,6 +497,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         postalCode: schoolInfo?.postalCode || "",
         province: schoolInfo?.province || "",
         district: schoolInfo?.district || "",
+        subDistrict: schoolInfo?.subDistrict || "",
         linkedStudentIds: [],
         photoURL: user.photoURL || null,
         createdAt: serverTimestamp(),
@@ -437,6 +537,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         loginWithGoogle,
         selectGoogleAccount,
+        registerTeacherWithEmail,
         registerTeacherWithGoogle,
         logout,
       }}
