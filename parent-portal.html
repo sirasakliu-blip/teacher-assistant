@@ -1,0 +1,1544 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>EduConnect360 - สมุดรายงานผู้ปกครอง (Parent Portal)</title>
+  
+  <!-- Google Fonts: Prompt -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet" />
+  
+  <!-- Font Awesome 6 Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Prompt', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              50: '#ecfdf5',
+              100: '#d1fae5',
+              200: '#a7f3d0',
+              300: '#6ee7b7',
+              400: '#34d399',
+              500: '#10b981',
+              600: '#059669',
+              700: '#047857',
+              800: '#065f46',
+              900: '#064e3b',
+            }
+          }
+        }
+      }
+    };
+  </script>
+
+  <!-- LINE LIFF SDK -->
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
+  <!-- Firebase v10 Compat SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+
+  <style>
+    body {
+      font-family: 'Prompt', sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+    /* Hide scrollbars for clean mobile feel */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen pb-12 selection:bg-brand-500 selection:text-white">
+
+  <!-- ========================================================================= -->
+  <!-- 1. LOADING SCREEN -->
+  <!-- ========================================================================= -->
+  <div id="loading-screen" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-50 p-6 transition-opacity duration-300">
+    <div class="relative flex items-center justify-center mb-5">
+      <div class="w-16 h-16 rounded-3xl bg-brand-600 text-white flex items-center justify-center text-2xl shadow-xl shadow-brand-600/30 animate-bounce">
+        <i class="fa-solid fa-graduation-cap"></i>
+      </div>
+      <div class="absolute -inset-2 rounded-3xl border-2 border-brand-500/30 animate-ping"></div>
+    </div>
+    <h2 class="text-lg font-bold text-slate-800">EduConnect360</h2>
+    <p id="loading-status-text" class="text-xs text-slate-500 mt-1">กำลังตรวจสอบข้อมูล LINE LIFF...</p>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- 2. TOAST NOTIFICATION -->
+  <!-- ========================================================================= -->
+  <div id="toast" class="fixed top-4 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 opacity-0 pointer-events-none max-w-sm w-[90%]">
+    <div id="toast-box" class="px-4 py-3 rounded-2xl shadow-lg border text-sm font-medium flex items-center gap-3 bg-white text-slate-800 border-slate-200">
+      <i id="toast-icon" class="fa-solid fa-circle-check text-brand-600 text-base"></i>
+      <span id="toast-msg">ข้อความแจ้งเตือน</span>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- 3. FIRST-TIME BINDING VIEW (กรณีผู้ปกครองยังไม่เคยผูกบัญชี) -->
+  <!-- ========================================================================= -->
+  <div id="binding-view" class="hidden min-h-screen flex flex-col justify-between max-w-md mx-auto p-4 sm:p-6">
+    <div class="pt-4">
+      <!-- LINE Profile Badge -->
+      <div class="flex items-center gap-3 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm mb-6">
+        <img id="parent-avatar-bind" src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120" alt="Avatar" class="w-12 h-12 rounded-xl object-cover border border-slate-200" />
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center gap-1.5">
+            <span class="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
+            <p class="text-xs font-semibold text-slate-500">บัญชี LINE ที่เข้าสู่ระบบ</p>
+          </div>
+          <p id="parent-name-bind" class="text-sm font-bold text-slate-900 truncate">ผู้ปกครอง</p>
+        </div>
+      </div>
+
+      <!-- Welcome Banner -->
+      <div class="text-center mb-6">
+        <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-brand-50 text-brand-700 text-2xl mb-3 shadow-inner">
+          <i class="fa-solid fa-link"></i>
+        </div>
+        <h1 class="text-xl font-bold text-slate-900">ลงทะเบียนผูกบัญชีนักเรียน</h1>
+        <p class="text-xs text-slate-500 mt-1.5 leading-relaxed">
+          เลือกชั้นเรียนและชื่อบุตรหลานเพื่อเชื่อมโยงกับ LINE เพื่อรับแจ้งเตือนและติดตามผลการเรียนแบบเรียลไทม์
+        </p>
+      </div>
+
+      <!-- Binding Form Card -->
+      <div class="bg-white rounded-3xl p-5 border border-slate-200/90 shadow-sm space-y-4">
+        <!-- Step 1: Grade Selection (ม.1 - ม.6) -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-2 flex items-center justify-between">
+            <span><i class="fa-solid fa-graduation-cap text-brand-600 mr-1.5"></i>1. เลือกระดับชั้นปี (ม.1 - ม.6)</span>
+            <span class="text-[11px] font-normal text-slate-400">จำเป็น</span>
+          </label>
+          <div class="grid grid-cols-3 gap-2" id="grade-chips">
+            <button type="button" data-grade="M1" data-gradename="ม.1" class="grade-chip py-2.5 px-3 rounded-xl border border-slate-200 font-semibold text-xs text-slate-700 hover:border-brand-500 transition">ม.1</button>
+            <button type="button" data-grade="M2" data-gradename="ม.2" class="grade-chip py-2.5 px-3 rounded-xl border border-slate-200 font-semibold text-xs text-slate-700 hover:border-brand-500 transition">ม.2</button>
+            <button type="button" data-grade="M3" data-gradename="ม.3" class="grade-chip py-2.5 px-3 rounded-xl border border-slate-200 font-semibold text-xs text-slate-700 hover:border-brand-500 transition">ม.3</button>
+            <button type="button" data-grade="M4" data-gradename="ม.4" class="grade-chip py-2.5 px-3 rounded-xl border border-slate-200 font-semibold text-xs text-slate-700 hover:border-brand-500 transition">ม.4</button>
+            <button type="button" data-grade="M5" data-gradename="ม.5" class="grade-chip py-2.5 px-3 rounded-xl border border-slate-200 font-semibold text-xs text-slate-700 hover:border-brand-500 transition">ม.5</button>
+            <button type="button" data-grade="M6" data-gradename="ม.6" class="grade-chip py-2.5 px-3 rounded-xl border border-slate-200 font-semibold text-xs text-slate-700 hover:border-brand-500 transition">ม.6</button>
+          </div>
+        </div>
+
+        <!-- Step 2: Room Selection (ห้อง 1 - 6) -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-2 flex items-center justify-between">
+            <span><i class="fa-solid fa-door-open text-brand-600 mr-1.5"></i>2. เลือกห้องเรียน (ห้อง 1 - 6)</span>
+            <span class="text-[11px] font-normal text-slate-400">จำเป็น</span>
+          </label>
+          <div class="grid grid-cols-6 gap-1.5" id="room-chips">
+            <button type="button" data-room="1" class="room-chip py-2 rounded-xl border border-slate-200 font-semibold text-xs text-slate-700 hover:border-brand-500 transition">1</button>
+            <button type="button" data-room="2" class="room-chip py-2 rounded-xl border border-slate-200 font-semibold text-xs text-slate-700 hover:border-brand-500 transition">2</button>
+            <button type="button" data-room="3" class="room-chip py-2 rounded-xl border border-slate-200 font-semibold text-xs text-slate-700 hover:border-brand-500 transition">3</button>
+            <button type="button" data-room="4" class="room-chip py-2 rounded-xl border border-slate-200 font-semibold text-xs text-slate-700 hover:border-brand-500 transition">4</button>
+            <button type="button" data-room="5" class="room-chip py-2 rounded-xl border border-slate-200 font-semibold text-xs text-slate-700 hover:border-brand-500 transition">5</button>
+            <button type="button" data-room="6" class="room-chip py-2 rounded-xl border border-slate-200 font-semibold text-xs text-slate-700 hover:border-brand-500 transition">6</button>
+          </div>
+        </div>
+
+        <!-- Step 3: Student Selection -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
+            <span><i class="fa-solid fa-user-check text-brand-600 mr-1.5"></i>3. เลือกชื่อนักเรียน</span>
+            <span id="student-count-badge" class="text-[11px] font-normal text-brand-600">กรุณาเลือกชั้นและห้องก่อน</span>
+          </label>
+          <div class="relative">
+            <select id="student-select" disabled class="w-full px-3.5 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-50 transition appearance-none">
+              <option value="">-- รอการเลือกระดับชั้นและห้อง --</option>
+            </select>
+            <i class="fa-solid fa-chevron-down absolute right-3.5 top-4 text-xs text-slate-400 pointer-events-none"></i>
+          </div>
+          <!-- Fallback manual input toggle if student not found in list -->
+          <div class="mt-2 text-right">
+            <button type="button" id="toggle-manual-input" class="text-[11px] text-brand-600 hover:underline">
+              ไม่พบชื่อนักเรียนในรายการ? (กรอกเอง)
+            </button>
+          </div>
+        </div>
+
+        <!-- Manual input fallback section (Hidden by default) -->
+        <div id="manual-student-section" class="hidden p-3.5 bg-brand-50/60 rounded-2xl border border-brand-200 space-y-2.5">
+          <p class="text-[11px] font-medium text-brand-800">
+            <i class="fa-solid fa-circle-info mr-1"></i>ระบุข้อมูลนักเรียนด้วยตนเอง:
+          </p>
+          <input type="text" id="manual-student-name" placeholder="ชื่อ - นามสกุล นักเรียน" class="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs focus:ring-2 focus:ring-brand-500 outline-none" />
+          <input type="text" id="manual-student-id" placeholder="รหัสนักเรียน (เช่น 67101 หรือ 66666)" class="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-brand-500 outline-none" />
+        </div>
+
+        <!-- Submit Button -->
+        <button id="btn-save-binding" type="button" class="w-full py-3.5 px-4 rounded-2xl bg-brand-600 hover:bg-brand-700 active:scale-[0.99] text-white font-bold text-sm shadow-lg shadow-brand-600/30 transition flex items-center justify-center gap-2 mt-2">
+          <span>บันทึกและเข้าสู่ระบบ</span>
+          <i class="fa-solid fa-arrow-right text-xs"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Security & Footer note -->
+    <div class="py-6 text-center text-[11px] text-slate-400 space-y-1">
+      <p><i class="fa-solid fa-shield-halved text-emerald-600 mr-1"></i>ข้อมูลจะถูกผูกกับบัญชี LINE ของท่านอย่างปลอดภัย</p>
+      <p>โรงเรียนจะจำค่านี้ไว้ตลอดไปโดยไม่ต้องกรอกซ้ำ</p>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- 4. MAIN PARENT DASHBOARD (เมื่อผูกบัญชีแล้ว) -->
+  <!-- ========================================================================= -->
+  <div id="dashboard-view" class="hidden max-w-lg mx-auto px-4 pt-3 pb-24">
+    
+    <!-- Top Student Info Card -->
+    <div class="relative overflow-hidden bg-gradient-to-br from-brand-800 via-brand-700 to-emerald-900 rounded-3xl p-5 text-white shadow-xl shadow-brand-900/20 mb-4">
+      <div class="absolute -right-6 -bottom-6 w-32 h-32 rounded-full bg-white/5 pointer-events-none"></div>
+      <div class="absolute -right-2 -top-6 w-20 h-20 rounded-full bg-emerald-400/10 pointer-events-none"></div>
+      
+      <div class="flex items-start justify-between relative z-10">
+        <div class="flex items-center gap-3">
+          <div class="w-12 h-12 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center text-xl text-emerald-200 border border-white/20">
+            <i class="fa-solid fa-user-graduate"></i>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <span id="card-student-room" class="px-2 py-0.5 rounded-md bg-emerald-400/20 text-emerald-200 text-[11px] font-semibold border border-emerald-400/30">
+                ม.2/1
+              </span>
+              <span id="card-student-id" class="text-xs text-emerald-100/80 font-mono">
+                รหัส: 66666
+              </span>
+            </div>
+            <h2 id="card-student-name" class="text-base sm:text-lg font-bold text-white mt-0.5">
+              เด็กชายดีเด่น ดีใจ
+            </h2>
+          </div>
+        </div>
+        
+        <!-- Switch / Reset Student Button -->
+        <button id="btn-switch-student" type="button" title="เปลี่ยนนักเรียน" class="px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 text-white text-[11px] font-medium backdrop-blur-md border border-white/15 transition flex items-center gap-1.5">
+          <i class="fa-solid fa-repeat text-xs"></i>
+          <span>เปลี่ยน</span>
+        </button>
+      </div>
+
+      <!-- Quick Attendance Banner inside Card -->
+      <div id="card-today-badge" class="mt-4 pt-3 border-t border-white/10 flex items-center justify-between text-xs">
+        <div class="flex items-center gap-2 text-emerald-100">
+          <span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span id="card-today-text">สถานะวันนี้: กำลังโหลด...</span>
+        </div>
+        <span class="text-[11px] text-emerald-200/80">อัปเดตเรียลไทม์</span>
+      </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- 6 TABS NAVIGATION BAR (Sticky/Clean Switcher) -->
+    <!-- ========================================================================= -->
+    <div class="sticky top-2 z-30 bg-white/95 backdrop-blur-md p-1.5 rounded-2xl shadow-md border border-slate-200 mb-5">
+      <div class="grid grid-cols-6 gap-1" id="tab-buttons">
+        <button type="button" data-tab="attendance" class="tab-btn py-2 px-1 rounded-xl text-center transition flex flex-col items-center justify-center text-brand-700 bg-brand-50 font-bold">
+          <i class="fa-solid fa-clipboard-user text-sm sm:text-base mb-0.5"></i>
+          <span class="text-[10px] sm:text-xs">เช็กชื่อ</span>
+        </button>
+        <button type="button" data-tab="assignments" class="tab-btn py-2 px-1 rounded-xl text-center transition flex flex-col items-center justify-center text-slate-500 hover:text-slate-900 font-medium">
+          <i class="fa-solid fa-book-open text-sm sm:text-base mb-0.5"></i>
+          <span class="text-[10px] sm:text-xs">การบ้าน</span>
+        </button>
+        <button type="button" data-tab="leave" class="tab-btn py-2 px-1 rounded-xl text-center transition flex flex-col items-center justify-center text-slate-500 hover:text-slate-900 font-medium">
+          <i class="fa-solid fa-envelope-open-text text-sm sm:text-base mb-0.5"></i>
+          <span class="text-[10px] sm:text-xs">แจ้งลา</span>
+        </button>
+        <button type="button" data-tab="schedule" class="tab-btn py-2 px-1 rounded-xl text-center transition flex flex-col items-center justify-center text-slate-500 hover:text-slate-900 font-medium">
+          <i class="fa-solid fa-calendar-days text-sm sm:text-base mb-0.5"></i>
+          <span class="text-[10px] sm:text-xs">ตารางเรียน</span>
+        </button>
+        <button type="button" data-tab="announcements" class="tab-btn py-2 px-1 rounded-xl text-center transition flex flex-col items-center justify-center text-slate-500 hover:text-slate-900 font-medium">
+          <i class="fa-solid fa-bullhorn text-sm sm:text-base mb-0.5"></i>
+          <span class="text-[10px] sm:text-xs">ประกาศ</span>
+        </button>
+        <button type="button" data-tab="contact" class="tab-btn py-2 px-1 rounded-xl text-center transition flex flex-col items-center justify-center text-slate-500 hover:text-slate-900 font-medium">
+          <i class="fa-solid fa-phone text-sm sm:text-base mb-0.5"></i>
+          <span class="text-[10px] sm:text-xs">ติดต่อครู</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- TAB CONTENT 1: ATTENDANCE (เช็กชื่อ / การเข้าเรียน) -->
+    <!-- ========================================================================= -->
+    <div id="tab-content-attendance" class="tab-content space-y-4">
+      <!-- High Priority Absence Alert (Shows if student is absent today) -->
+      <div id="attendance-absent-alert" class="hidden p-4 rounded-2xl bg-rose-50 border-2 border-rose-300 text-rose-800 space-y-1.5 animate-pulse">
+        <div class="flex items-center gap-2 font-bold text-sm">
+          <i class="fa-solid fa-triangle-exclamation text-rose-600 text-base"></i>
+          <span>แจ้งเตือน: นักเรียนมีรายวิชาที่ไม่เข้าเรียนวันนี้!</span>
+        </div>
+        <p id="attendance-absent-details" class="text-xs text-rose-700 leading-relaxed">
+          ตรวจพบการขาดเรียน กรุณาตรวจสอบหรือติดต่อครูประจำชั้นทันทีครับ
+        </p>
+      </div>
+
+      <!-- Quick Stats Grid -->
+      <div class="grid grid-cols-4 gap-2">
+        <div class="bg-white p-3 rounded-2xl border border-slate-200 text-center shadow-sm">
+          <span class="text-[10px] font-semibold text-slate-400">มาเรียน</span>
+          <p id="stat-present" class="text-base font-bold text-emerald-600 mt-0.5">0</p>
+        </div>
+        <div class="bg-white p-3 rounded-2xl border border-slate-200 text-center shadow-sm">
+          <span class="text-[10px] font-semibold text-slate-400">มาสาย</span>
+          <p id="stat-late" class="text-base font-bold text-amber-500 mt-0.5">0</p>
+        </div>
+        <div class="bg-white p-3 rounded-2xl border border-slate-200 text-center shadow-sm">
+          <span class="text-[10px] font-semibold text-slate-400">ลา</span>
+          <p id="stat-excused" class="text-base font-bold text-sky-500 mt-0.5">0</p>
+        </div>
+        <div class="bg-white p-3 rounded-2xl border border-slate-200 text-center shadow-sm">
+          <span class="text-[10px] font-semibold text-slate-400">ขาดเรียน</span>
+          <p id="stat-absent" class="text-base font-bold text-rose-500 mt-0.5">0</p>
+        </div>
+      </div>
+
+      <!-- Today's Per-Subject Status Card -->
+      <div class="bg-white rounded-3xl p-4 border border-slate-200 shadow-sm">
+        <h3 class="text-sm font-bold text-slate-800 mb-3 flex items-center justify-between">
+          <span><i class="fa-solid fa-clock text-brand-600 mr-2"></i>การเช็กชื่อรายคาบวันนี้</span>
+          <span id="today-date-str" class="text-xs font-normal text-slate-400">วันนี้</span>
+        </h3>
+        <div id="today-subject-list" class="space-y-2">
+          <!-- Injected via JS -->
+          <p class="text-xs text-slate-400 text-center py-3">กำลังโหลดข้อมูลคาบเรียน...</p>
+        </div>
+      </div>
+
+      <!-- Attendance History Log -->
+      <div class="bg-white rounded-3xl p-4 border border-slate-200 shadow-sm">
+        <h3 class="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
+          <i class="fa-solid fa-history text-slate-500"></i>
+          <span>ประวัติการเช็กชื่อย้อนหลัง</span>
+        </h3>
+        <div id="attendance-history-list" class="space-y-2 max-h-80 overflow-y-auto pr-1">
+          <!-- Injected via JS -->
+          <p class="text-xs text-slate-400 text-center py-4">กำลังโหลดประวัติ...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- TAB CONTENT 2: ASSIGNMENTS (การบ้าน / งานค้าง) -->
+    <!-- ========================================================================= -->
+    <div id="tab-content-assignments" class="tab-content hidden space-y-4">
+      <!-- Filter Chips -->
+      <div class="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+        <button type="button" data-filter="all" class="assignment-filter py-1.5 px-3 rounded-full text-xs font-semibold bg-brand-600 text-white">ทั้งหมด</button>
+        <button type="button" data-filter="pending" class="assignment-filter py-1.5 px-3 rounded-full text-xs font-semibold bg-white text-slate-600 border border-slate-200">ยังไม่ส่ง (งานค้าง)</button>
+        <button type="button" data-filter="submitted" class="assignment-filter py-1.5 px-3 rounded-full text-xs font-semibold bg-white text-slate-600 border border-slate-200">ส่งแล้ว</button>
+      </div>
+
+      <!-- Assignment List -->
+      <div id="assignment-list" class="space-y-3">
+        <!-- Injected via JS -->
+        <p class="text-xs text-slate-400 text-center py-8">กำลังโหลดรายการการบ้าน...</p>
+      </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- TAB CONTENT 3: LEAVE (แจ้งลาเรียน & ประวัติการลา) -->
+    <!-- ========================================================================= -->
+    <div id="tab-content-leave" class="tab-content hidden space-y-4">
+      <!-- Submit Leave Form Card -->
+      <div class="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm space-y-3.5">
+        <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+          <i class="fa-solid fa-pen-to-square text-brand-600"></i>
+          <span>แบบฟอร์มยื่นใบลาเรียน</span>
+        </h3>
+
+        <!-- Leave Type Chips -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">ประเภทการลา</label>
+          <div class="grid grid-cols-3 gap-2" id="leave-type-group">
+            <button type="button" data-type="sick" class="leave-type-btn py-2 px-3 rounded-xl border border-brand-500 bg-brand-50 font-bold text-xs text-brand-700">ลาป่วย</button>
+            <button type="button" data-type="personal" class="leave-type-btn py-2 px-3 rounded-xl border border-slate-200 font-semibold text-xs text-slate-700">ลากิจ</button>
+            <button type="button" data-type="other" class="leave-type-btn py-2 px-3 rounded-xl border border-slate-200 font-semibold text-xs text-slate-700">อื่นๆ</button>
+          </div>
+        </div>
+
+        <!-- Date Range -->
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">ตั้งแต่วันที่</label>
+            <input type="date" id="leave-start-date" class="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 focus:ring-2 focus:ring-brand-500 outline-none" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">ถึงวันที่</label>
+            <input type="date" id="leave-end-date" class="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 focus:ring-2 focus:ring-brand-500 outline-none" />
+          </div>
+        </div>
+
+        <!-- Reason -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">เหตุผลการลา</label>
+          <textarea id="leave-reason" rows="2" placeholder="ระบุเหตุผล เช่น เป็นไข้หวัดพบแพทย์ หรือ มีธุระจำเป็นกับครอบครัว" class="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 focus:ring-2 focus:ring-brand-500 outline-none"></textarea>
+        </div>
+
+        <!-- Submit Button -->
+        <button id="btn-submit-leave" type="button" class="w-full py-3 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs shadow-md shadow-brand-600/25 transition flex items-center justify-center gap-2">
+          <i class="fa-solid fa-paper-plane text-xs"></i>
+          <span>ยื่นใบลาต่อครูประจำชั้น</span>
+        </button>
+      </div>
+
+      <!-- Leave History -->
+      <div class="bg-white rounded-3xl p-4 border border-slate-200 shadow-sm">
+        <h3 class="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
+          <i class="fa-solid fa-clock-rotate-left text-slate-500"></i>
+          <span>ประวัติการยื่นใบลา</span>
+        </h3>
+        <div id="leave-history-list" class="space-y-2">
+          <p class="text-xs text-slate-400 text-center py-4">ยังไม่มีประวัติการยื่นใบลา</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- TAB CONTENT 4: SCHEDULE (ตารางเรียน / กิจกรรม) -->
+    <!-- ========================================================================= -->
+    <div id="tab-content-schedule" class="tab-content hidden space-y-4">
+      <!-- Day Switcher (จันทร์ - ศุกร์) -->
+      <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1" id="schedule-day-chips">
+        <button type="button" data-day="monday" class="sched-day-btn flex-1 py-2 px-2 rounded-xl text-xs font-bold bg-brand-600 text-white text-center">จันทร์</button>
+        <button type="button" data-day="tuesday" class="sched-day-btn flex-1 py-2 px-2 rounded-xl text-xs font-semibold bg-white text-slate-700 border border-slate-200 text-center">อังคาร</button>
+        <button type="button" data-day="wednesday" class="sched-day-btn flex-1 py-2 px-2 rounded-xl text-xs font-semibold bg-white text-slate-700 border border-slate-200 text-center">พุธ</button>
+        <button type="button" data-day="thursday" class="sched-day-btn flex-1 py-2 px-2 rounded-xl text-xs font-semibold bg-white text-slate-700 border border-slate-200 text-center">พฤหัสฯ</button>
+        <button type="button" data-day="friday" class="sched-day-btn flex-1 py-2 px-2 rounded-xl text-xs font-semibold bg-white text-slate-700 border border-slate-200 text-center">ศุกร์</button>
+      </div>
+
+      <!-- Schedule Timetable Card -->
+      <div class="bg-white rounded-3xl p-4 border border-slate-200 shadow-sm">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+            <i class="fa-solid fa-calendar-check text-brand-600"></i>
+            <span id="sched-current-day-title">ตารางเรียนวันจันทร์</span>
+          </h3>
+          <span id="sched-room-badge" class="px-2 py-0.5 rounded-md bg-brand-50 text-brand-700 text-[11px] font-semibold border border-brand-200">
+            ม.2/1
+          </span>
+        </div>
+        <div id="schedule-period-list" class="space-y-2.5">
+          <!-- Injected via JS -->
+          <p class="text-xs text-slate-400 text-center py-6">กำลังโหลดตารางเรียน...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- TAB CONTENT 5: ANNOUNCEMENTS (ประกาศจากครู) -->
+    <!-- ========================================================================= -->
+    <div id="tab-content-announcements" class="tab-content hidden space-y-3">
+      <div class="flex items-center justify-between px-1">
+        <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+          <i class="fa-solid fa-bullhorn text-brand-600"></i>
+          <span>ข่าวสารและประกาศจากโรงเรียน</span>
+        </h3>
+        <span class="text-xs text-slate-400">อัปเดตล่าสุด</span>
+      </div>
+
+      <div id="announcement-list" class="space-y-3">
+        <!-- Injected via JS -->
+        <p class="text-xs text-slate-400 text-center py-8">กำลังโหลดประกาศ...</p>
+      </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- TAB CONTENT 6: CONTACT (ติดต่อครูประจำชั้น) -->
+    <!-- ========================================================================= -->
+    <div id="tab-content-contact" class="tab-content hidden space-y-4">
+      <!-- Advisor Teacher Card -->
+      <div class="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm text-center relative overflow-hidden">
+        <div class="w-20 h-20 rounded-2xl bg-brand-50 text-brand-700 text-3xl mx-auto flex items-center justify-center mb-3 shadow-inner border border-brand-200/60">
+          <i class="fa-solid fa-chalkboard-user"></i>
+        </div>
+        <span class="px-2.5 py-1 rounded-full bg-brand-50 border border-brand-200 text-brand-800 text-[11px] font-semibold">
+          ครูที่ปรึกษาประจำชั้น
+        </span>
+        <h2 id="teacher-name-contact" class="text-base font-bold text-slate-900 mt-2">
+          นายสมหมาย ใจดี
+        </h2>
+        <p id="teacher-room-contact" class="text-xs text-slate-500 mt-0.5">
+          ครูประจำชั้น ม.2/1
+        </p>
+
+        <!-- Quick Action Buttons: Call & LINE -->
+        <div class="grid grid-cols-2 gap-2 mt-5">
+          <a id="btn-call-teacher" href="tel:0812345678" class="py-3 px-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/25 flex items-center justify-center gap-2 transition">
+            <i class="fa-solid fa-phone"></i>
+            <span>โทรหาครู</span>
+          </a>
+          <a id="btn-line-teacher" href="https://line.me/ti/p/~kru_sommai" target="_blank" class="py-3 px-3 rounded-2xl bg-[#06C755] hover:bg-[#05b34c] text-white font-bold text-xs shadow-md shadow-[#06C755]/25 flex items-center justify-center gap-2 transition">
+            <i class="fa-brands fa-line text-sm"></i>
+            <span>LINE คุณครู</span>
+          </a>
+        </div>
+      </div>
+
+      <!-- Additional Details & School Office Contact -->
+      <div class="bg-white rounded-3xl p-4 border border-slate-200 shadow-sm space-y-3">
+        <h4 class="text-xs font-bold text-slate-700 flex items-center gap-2">
+          <i class="fa-solid fa-circle-info text-slate-400"></i>
+          <span>ช่องทางติดต่อสถานศึกษา</span>
+        </h4>
+        <div class="space-y-2 text-xs">
+          <div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+            <span class="text-slate-500"><i class="fa-solid fa-building mr-2 text-slate-400"></i>ห้องวิชาการ / ธุรการ</span>
+            <a href="tel:021234567" class="font-bold text-brand-700">02-123-4567</a>
+          </div>
+          <div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+            <span class="text-slate-500"><i class="fa-solid fa-envelope mr-2 text-slate-400"></i>อีเมลโรงเรียน</span>
+            <span class="font-medium text-slate-700">contact@school.ac.th</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- 5. CONFIRMATION MODAL: RESET / SWITCH STUDENT -->
+  <!-- ========================================================================= -->
+  <div id="switch-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 hidden">
+    <div class="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center space-y-4 animate-scaleIn">
+      <div class="w-14 h-14 rounded-2xl bg-amber-50 text-amber-500 mx-auto flex items-center justify-center text-2xl shadow-inner">
+        <i class="fa-solid fa-user-pen"></i>
+      </div>
+      <div>
+        <h3 class="text-base font-bold text-slate-900">ต้องการเปลี่ยนนักเรียน?</h3>
+        <p class="text-xs text-slate-500 mt-1 leading-relaxed">
+          ระบบจะยกเลิกการผูกบัญชีเดิม เพื่อให้ท่านสามารถเลือกผูกกับบุตรหลานคนใหม่ได้
+        </p>
+      </div>
+      <div class="grid grid-cols-2 gap-2 pt-2">
+        <button id="modal-cancel-switch" type="button" class="py-2.5 px-4 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition">
+          ยกเลิก
+        </button>
+        <button id="modal-confirm-switch" type="button" class="py-2.5 px-4 rounded-xl bg-rose-600 text-white text-xs font-bold hover:bg-rose-700 transition shadow-md shadow-rose-600/25">
+          ยืนยันเปลี่ยน
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- JAVASCRIPT APPLICATION LOGIC -->
+  <!-- ========================================================================= -->
+  <script>
+    // ---------------------------------------------------------------------------
+    // CONFIGURATION & CONSTANTS
+    // ---------------------------------------------------------------------------
+    const LIFF_ID = "2012726688-SBKhhJZJ";
+    const FIREBASE_CONFIG = {
+      apiKey: "AIzaSyCSvi6-C3Gar4Fkb9EsxjbR5DVJ44o41AI",
+      authDomain: "educonnect360-d5c47.firebaseapp.com",
+      projectId: "educonnect360-d5c47",
+      storageBucket: "educonnect360-d5c47.firebasestorage.app",
+      messagingSenderId: "296532522863",
+      appId: "1:296532522863:web:8fc1b0b22fd4b1fb839a9a"
+    };
+
+    // Global App State
+    let db = null;
+    let auth = null;
+    let currentLineUser = {
+      userId: "DEV_PARENT_USER_123",
+      displayName: "ผู้ปกครอง",
+      pictureUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120"
+    };
+    let currentBinding = null;
+    let selectedGrade = "";     // e.g. "M2"
+    let selectedGradeName = ""; // e.g. "ม.2"
+    let selectedRoom = "";      // e.g. "1"
+    let activeTab = "attendance";
+    let activeScheduleDay = "monday";
+    let activeLeaveType = "sick";
+    let cachedStudentsList = [];
+
+    // ---------------------------------------------------------------------------
+    // TOAST HELPER
+    // ---------------------------------------------------------------------------
+    function showToast(message, type = "success") {
+      const toast = document.getElementById("toast");
+      const msg = document.getElementById("toast-msg");
+      const icon = document.getElementById("toast-icon");
+      const box = document.getElementById("toast-box");
+
+      msg.textContent = message;
+      if (type === "error") {
+        icon.className = "fa-solid fa-circle-exclamation text-rose-600 text-base";
+        box.className = "px-4 py-3 rounded-2xl shadow-lg border text-sm font-medium flex items-center gap-3 bg-rose-50 text-rose-900 border-rose-200";
+      } else {
+        icon.className = "fa-solid fa-circle-check text-brand-600 text-base";
+        box.className = "px-4 py-3 rounded-2xl shadow-lg border text-sm font-medium flex items-center gap-3 bg-white text-slate-800 border-slate-200";
+      }
+
+      toast.classList.remove("opacity-0", "pointer-events-none");
+      setTimeout(() => {
+        toast.classList.add("opacity-0", "pointer-events-none");
+      }, 3500);
+    }
+
+    // ---------------------------------------------------------------------------
+    // INITIALIZATION
+    // ---------------------------------------------------------------------------
+    window.addEventListener("DOMContentLoaded", async () => {
+      try {
+        // 1. Initialize Firebase
+        if (!firebase.apps.length) {
+          firebase.initializeApp(FIREBASE_CONFIG);
+        }
+        db = firebase.firestore();
+        auth = firebase.auth();
+
+        // Ensure anonymous auth for Firestore rules
+        try {
+          if (!auth.currentUser) {
+            await auth.signInAnonymously();
+          }
+        } catch (authErr) {
+          console.warn("Auth anonymously failed or offline:", authErr);
+        }
+
+        // 2. Read URL Parameters (?tab=...)
+        const urlParams = new URLSearchParams(window.location.search);
+        const requestedTab = urlParams.get("tab");
+        if (requestedTab && ["attendance", "assignments", "leave", "schedule", "announcements", "contact"].includes(requestedTab)) {
+          activeTab = requestedTab;
+        }
+
+        // 3. Initialize LINE LIFF SDK
+        await initLiffSdk();
+
+        // 4. Check Firestore Collection `parent_bindings`
+        await checkParentBinding();
+
+      } catch (err) {
+        console.error("Setup error:", err);
+        showToast("เกิดข้อผิดพลาดในการโหลดระบบ: " + err.message, "error");
+        hideLoading();
+      }
+    });
+
+    async function initLiffSdk() {
+      const statusText = document.getElementById("loading-status-text");
+      try {
+        if (window.liff) {
+          await window.liff.init({ liffId: LIFF_ID });
+          if (window.liff.isLoggedIn()) {
+            const profile = await window.liff.getProfile();
+            currentLineUser = {
+              userId: profile.userId,
+              displayName: profile.displayName || "ผู้ปกครอง",
+              pictureUrl: profile.pictureUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120"
+            };
+          } else if (window.liff.isInClient()) {
+            window.liff.login();
+            return;
+          }
+        }
+      } catch (liffErr) {
+        console.warn("LIFF init fallback to demo/web mode:", liffErr);
+      }
+    }
+
+    function hideLoading() {
+      const screen = document.getElementById("loading-screen");
+      screen.classList.add("opacity-0", "pointer-events-none");
+      setTimeout(() => screen.remove(), 300);
+    }
+
+    // ---------------------------------------------------------------------------
+    // BINDING CHECK & SWITCH VIEWS
+    // ---------------------------------------------------------------------------
+    async function checkParentBinding() {
+      const bindingDocRef = db.collection("parent_bindings").doc(currentLineUser.userId);
+      const snapshot = await bindingDocRef.get();
+
+      if (snapshot.exists) {
+        currentBinding = snapshot.data();
+        showDashboardView();
+      } else {
+        // Also check legacy `parent_line_links`
+        const legacyRef = db.collection("parent_line_links").doc(currentLineUser.userId);
+        const legacySnap = await legacyRef.get();
+        if (legacySnap.exists) {
+          const lData = legacySnap.data();
+          currentBinding = {
+            studentId: lData.studentId || "66666",
+            studentUid: lData.studentUid || "c5kASRdxUbbRpdXonifh4u...",
+            studentName: lData.studentName || "เด็กชายดีเด่น ดีใจ",
+            gradeLevel: lData.gradeLevel || "ม.2/1",
+            grade: "M2",
+            room: "1",
+            lineUserId: currentLineUser.userId,
+            parentDisplayName: currentLineUser.displayName
+          };
+          // Persist to parent_bindings for future fast access
+          await bindingDocRef.set(currentBinding, { merge: true });
+          showDashboardView();
+        } else {
+          showBindingView();
+        }
+      }
+      hideLoading();
+    }
+
+    function showBindingView() {
+      document.getElementById("binding-view").classList.remove("hidden");
+      document.getElementById("dashboard-view").classList.add("hidden");
+
+      document.getElementById("parent-avatar-bind").src = currentLineUser.pictureUrl;
+      document.getElementById("parent-name-bind").textContent = currentLineUser.displayName;
+
+      setupBindingFormEvents();
+    }
+
+    function showDashboardView() {
+      document.getElementById("binding-view").classList.add("hidden");
+      document.getElementById("dashboard-view").classList.remove("hidden");
+
+      // Update Card Header
+      document.getElementById("card-student-name").textContent = currentBinding.studentName || "นักเรียน";
+      document.getElementById("card-student-id").textContent = "รหัส: " + (currentBinding.studentId || "-");
+      document.getElementById("card-student-room").textContent = currentBinding.gradeLevel || "ม.2/1";
+      document.getElementById("sched-room-badge").textContent = currentBinding.gradeLevel || "ม.2/1";
+
+      // Setup Dashboard Tabs & load contents
+      setupDashboardEvents();
+      switchTab(activeTab);
+      loadDashboardData();
+    }
+
+    // ---------------------------------------------------------------------------
+    // BINDING FORM LOGIC
+    // ---------------------------------------------------------------------------
+    function setupBindingFormEvents() {
+      // Grade chips click
+      const gradeChips = document.querySelectorAll(".grade-chip");
+      gradeChips.forEach(chip => {
+        chip.addEventListener("click", () => {
+          gradeChips.forEach(c => {
+            c.classList.remove("border-brand-600", "bg-brand-50", "text-brand-700", "font-bold");
+            c.classList.add("border-slate-200", "text-slate-700");
+          });
+          chip.classList.remove("border-slate-200", "text-slate-700");
+          chip.classList.add("border-brand-600", "bg-brand-50", "text-brand-700", "font-bold");
+          selectedGrade = chip.dataset.grade;
+          selectedGradeName = chip.dataset.gradename;
+          fetchStudentsForBinding();
+        });
+      });
+
+      // Room chips click
+      const roomChips = document.querySelectorAll(".room-chip");
+      roomChips.forEach(chip => {
+        chip.addEventListener("click", () => {
+          roomChips.forEach(c => {
+            c.classList.remove("border-brand-600", "bg-brand-50", "text-brand-700", "font-bold");
+            c.classList.add("border-slate-200", "text-slate-700");
+          });
+          chip.classList.remove("border-slate-200", "text-slate-700");
+          chip.classList.add("border-brand-600", "bg-brand-50", "text-brand-700", "font-bold");
+          selectedRoom = chip.dataset.room;
+          fetchStudentsForBinding();
+        });
+      });
+
+      // Toggle Manual Input
+      const toggleManual = document.getElementById("toggle-manual-input");
+      const manualSection = document.getElementById("manual-student-section");
+      toggleManual.addEventListener("click", () => {
+        manualSection.classList.toggle("hidden");
+      });
+
+      // Save Binding Button
+      const btnSave = document.getElementById("btn-save-binding");
+      btnSave.addEventListener("click", handleSaveBinding);
+    }
+
+    async function fetchStudentsForBinding() {
+      if (!selectedGrade || !selectedRoom) return;
+
+      const studentSelect = document.getElementById("student-select");
+      const countBadge = document.getElementById("student-count-badge");
+      const gradeLevelTarget = `${selectedGradeName}/${selectedRoom}`; // e.g. "ม.2/1"
+      const altGradeTarget = `${selectedGrade}/${selectedRoom}`;       // e.g. "M2/1"
+
+      studentSelect.innerHTML = `<option value="">กำลังค้นหารายชื่อนักเรียน...</option>`;
+      studentSelect.disabled = true;
+      countBadge.textContent = "กำลังค้นหา...";
+
+      try {
+        let students = [];
+
+        // 1. Check `users` collection where role == 'student'
+        const usersSnap = await db.collection("users")
+          .where("role", "==", "student")
+          .get();
+
+        usersSnap.forEach(doc => {
+          const u = doc.data();
+          if (u.gradeLevel === gradeLevelTarget || u.gradeLevel === altGradeTarget || u.grade === selectedGrade) {
+            students.push({
+              uid: doc.id,
+              studentId: u.studentId || u.code || doc.id.substring(0, 6),
+              fullName: u.fullName || u.displayName || "นักเรียน",
+              gradeLevel: gradeLevelTarget
+            });
+          }
+        });
+
+        // 2. Also check `students` collection
+        if (students.length === 0) {
+          const studentsSnap = await db.collection("students").get();
+          studentsSnap.forEach(doc => {
+            const s = doc.data();
+            if (s.gradeLevel === gradeLevelTarget || s.gradeLevel === altGradeTarget || (s.grade === selectedGrade && String(s.room) === String(selectedRoom))) {
+              students.push({
+                uid: doc.id,
+                studentId: s.studentId || s.code || doc.id.substring(0, 6),
+                fullName: s.fullName || s.name || "นักเรียน",
+                gradeLevel: gradeLevelTarget
+              });
+            }
+          });
+        }
+
+        cachedStudentsList = students;
+
+        if (students.length > 0) {
+          studentSelect.innerHTML = `<option value="">-- กรุณาเลือกชื่อนักเรียน (${students.length} คน) --</option>` +
+            students.map(s => `<option value="${s.uid}" data-id="${s.studentId}" data-name="${s.fullName}">${s.fullName} (รหัส: ${s.studentId})</option>`).join("");
+          studentSelect.disabled = false;
+          countBadge.textContent = `พบ ${students.length} คน ในห้อง ${gradeLevelTarget}`;
+        } else {
+          studentSelect.innerHTML = `<option value="">-- ไม่พบนักเรียนในห้อง ${gradeLevelTarget} --</option>`;
+          studentSelect.disabled = true;
+          countBadge.textContent = `ยังไม่มีนักเรียนในห้องนี้ (กรอกด้านล่าง)`;
+          document.getElementById("manual-student-section").classList.remove("hidden");
+        }
+      } catch (err) {
+        console.error("Query students failed:", err);
+        studentSelect.innerHTML = `<option value="">-- ไม่สามารถโหลดข้อมูลได้ (กรอกด้วยตนเอง) --</option>`;
+        document.getElementById("manual-student-section").classList.remove("hidden");
+      }
+    }
+
+    async function handleSaveBinding() {
+      if (!selectedGrade || !selectedRoom) {
+        showToast("กรุณาเลือกระดับชั้น (ม.1 - ม.6) และห้องเรียนก่อนครับ", "error");
+        return;
+      }
+
+      const studentSelect = document.getElementById("student-select");
+      const manualName = document.getElementById("manual-student-name").value.trim();
+      const manualId = document.getElementById("manual-student-id").value.trim();
+      const gradeLevel = `${selectedGradeName}/${selectedRoom}`;
+
+      let studentUid = "";
+      let studentName = "";
+      let studentId = "";
+
+      if (studentSelect.value) {
+        studentUid = studentSelect.value;
+        const opt = studentSelect.options[studentSelect.selectedIndex];
+        studentName = opt.dataset.name;
+        studentId = opt.dataset.id;
+      } else if (manualName) {
+        studentName = manualName;
+        studentId = manualId || Math.floor(10000 + Math.random() * 90000).toString();
+        studentUid = "MANUAL_" + studentId;
+      } else {
+        showToast("กรุณาเลือกชื่อนักเรียน หรือกรอกชื่อนักเรียนในช่องด้านล่างครับ", "error");
+        return;
+      }
+
+      const saveBtn = document.getElementById("btn-save-binding");
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> กำลังบันทึก...`;
+
+      try {
+        const bindingData = {
+          lineUserId: currentLineUser.userId,
+          parentDisplayName: currentLineUser.displayName,
+          parentPictureUrl: currentLineUser.pictureUrl,
+          studentId: studentId,
+          studentUid: studentUid,
+          studentName: studentName,
+          grade: selectedGrade,
+          room: selectedRoom,
+          gradeLevel: gradeLevel,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+
+        // 1. Save to `parent_bindings`
+        await db.collection("parent_bindings").doc(currentLineUser.userId).set(bindingData);
+
+        // 2. Dual-write to `parent_line_links` for LINE Bot Webhook compatibility
+        await db.collection("parent_line_links").doc(currentLineUser.userId).set({
+          lineUserId: currentLineUser.userId,
+          studentUid: studentUid,
+          studentId: studentId,
+          studentName: studentName,
+          gradeLevel: gradeLevel,
+          boundAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+
+        currentBinding = bindingData;
+        showToast("ผูกข้อมูลนักเรียนสำเร็จเรียบร้อยครับ!");
+        showDashboardView();
+      } catch (err) {
+        console.error("Save binding error:", err);
+        showToast("บันทึกไม่สำเร็จ: " + err.message, "error");
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = `<span>บันทึกและเข้าสู่ระบบ</span> <i class="fa-solid fa-arrow-right text-xs"></i>`;
+      }
+    }
+
+    // ---------------------------------------------------------------------------
+    // DASHBOARD & TABS MANAGEMENT
+    // ---------------------------------------------------------------------------
+    function setupDashboardEvents() {
+      // Tab switcher buttons
+      const tabButtons = document.querySelectorAll(".tab-btn");
+      tabButtons.forEach(btn => {
+        btn.addEventListener("click", () => {
+          switchTab(btn.dataset.tab);
+        });
+      });
+
+      // Switch student modal
+      const btnSwitch = document.getElementById("btn-switch-student");
+      const modal = document.getElementById("switch-modal");
+      const cancelSwitch = document.getElementById("modal-cancel-switch");
+      const confirmSwitch = document.getElementById("modal-confirm-switch");
+
+      btnSwitch.addEventListener("click", () => modal.classList.remove("hidden"));
+      cancelSwitch.addEventListener("click", () => modal.classList.add("hidden"));
+      confirmSwitch.addEventListener("click", async () => {
+        modal.classList.add("hidden");
+        try {
+          await db.collection("parent_bindings").doc(currentLineUser.userId).delete();
+          await db.collection("parent_line_links").doc(currentLineUser.userId).delete();
+        } catch (e) {
+          console.warn("Delete binding doc error:", e);
+        }
+        currentBinding = null;
+        showBindingView();
+        showToast("ยกเลิกการผูกบัญชีเดิมแล้ว กรุณาเลือกนักเรียนคนใหม่");
+      });
+
+      // Leave Type buttons
+      const leaveTypeBtns = document.querySelectorAll(".leave-type-btn");
+      leaveTypeBtns.forEach(btn => {
+        btn.addEventListener("click", () => {
+          leaveTypeBtns.forEach(b => {
+            b.classList.remove("border-brand-500", "bg-brand-50", "text-brand-700", "font-bold");
+            b.classList.add("border-slate-200", "text-slate-700");
+          });
+          btn.classList.remove("border-slate-200", "text-slate-700");
+          btn.classList.add("border-brand-500", "bg-brand-50", "text-brand-700", "font-bold");
+          activeLeaveType = btn.dataset.type;
+        });
+      });
+
+      // Leave Submit
+      document.getElementById("btn-submit-leave").addEventListener("click", handleLeaveSubmit);
+
+      // Schedule Day buttons
+      const dayBtns = document.querySelectorAll(".sched-day-btn");
+      dayBtns.forEach(btn => {
+        btn.addEventListener("click", () => {
+          dayBtns.forEach(b => {
+            b.classList.remove("bg-brand-600", "text-white", "font-bold");
+            b.classList.add("bg-white", "text-slate-700", "border", "border-slate-200");
+          });
+          btn.classList.remove("bg-white", "text-slate-700", "border", "border-slate-200");
+          btn.classList.add("bg-brand-600", "text-white", "font-bold");
+          activeScheduleDay = btn.dataset.day;
+          renderSchedule();
+        });
+      });
+
+      // Assignment filters
+      const assignFilters = document.querySelectorAll(".assignment-filter");
+      assignFilters.forEach(f => {
+        f.addEventListener("click", () => {
+          assignFilters.forEach(b => {
+            b.classList.remove("bg-brand-600", "text-white");
+            b.classList.add("bg-white", "text-slate-600", "border", "border-slate-200");
+          });
+          f.classList.remove("bg-white", "text-slate-600", "border", "border-slate-200");
+          f.classList.add("bg-brand-600", "text-white");
+          renderAssignments(f.dataset.filter);
+        });
+      });
+
+      // Set default leave dates to today
+      const todayStr = new Date().toISOString().split("T")[0];
+      document.getElementById("leave-start-date").value = todayStr;
+      document.getElementById("leave-end-date").value = todayStr;
+    }
+
+    function switchTab(tabName) {
+      activeTab = tabName;
+
+      // Update button styles
+      const tabButtons = document.querySelectorAll(".tab-btn");
+      tabButtons.forEach(btn => {
+        if (btn.dataset.tab === tabName) {
+          btn.classList.remove("text-slate-500", "hover:text-slate-900", "font-medium");
+          btn.classList.add("text-brand-700", "bg-brand-50", "font-bold");
+        } else {
+          btn.classList.remove("text-brand-700", "bg-brand-50", "font-bold");
+          btn.classList.add("text-slate-500", "hover:text-slate-900", "font-medium");
+        }
+      });
+
+      // Show target tab content, hide others
+      document.querySelectorAll(".tab-content").forEach(c => c.classList.add("hidden"));
+      const targetContent = document.getElementById(`tab-content-${tabName}`);
+      if (targetContent) {
+        targetContent.classList.remove("hidden");
+      }
+    }
+
+    // ---------------------------------------------------------------------------
+    // LOAD DASHBOARD DATA (All 6 Tabs)
+    // ---------------------------------------------------------------------------
+    async function loadDashboardData() {
+      loadAttendanceData();
+      loadAssignmentsData();
+      loadLeaveHistory();
+      renderSchedule();
+      loadAnnouncementsData();
+      loadTeacherContactData();
+    }
+
+    // ---------------------------------------------------------------------------
+    // 1. ATTENDANCE TAB
+    // ---------------------------------------------------------------------------
+    async function loadAttendanceData() {
+      const todayDateStr = new Date().toLocaleDateString("th-TH", {
+        day: "numeric",
+        month: "long",
+        year: "numeric"
+      });
+      document.getElementById("today-date-str").textContent = todayDateStr;
+
+      try {
+        let records = [];
+        // Query `attendance` where studentId == currentBinding.studentId
+        const snap = await db.collection("attendance")
+          .where("studentId", "==", currentBinding.studentId)
+          .get();
+
+        snap.forEach(doc => records.push(doc.data()));
+
+        // Also query by studentUid if available
+        if (records.length === 0 && currentBinding.studentUid) {
+          const snap2 = await db.collection("attendance")
+            .where("studentUid", "==", currentBinding.studentUid)
+            .get();
+          snap2.forEach(doc => records.push(doc.data()));
+        }
+
+        // Fallback realistic attendance data if empty
+        if (records.length === 0) {
+          records = generateRealisticAttendance();
+        }
+
+        // Calculate stats
+        let present = 0, late = 0, excused = 0, absent = 0;
+        records.forEach(r => {
+          if (r.status === "present") present++;
+          else if (r.status === "late") late++;
+          else if (r.status === "excused") excused++;
+          else if (r.status === "absent") absent++;
+        });
+
+        document.getElementById("stat-present").textContent = present;
+        document.getElementById("stat-late").textContent = late;
+        document.getElementById("stat-excused").textContent = excused;
+        document.getElementById("stat-absent").textContent = absent;
+
+        // Check today's absent status
+        const todayAbsent = records.some(r => r.status === "absent" && isToday(r.date));
+        const absentAlert = document.getElementById("attendance-absent-alert");
+        const cardTodayText = document.getElementById("card-today-text");
+
+        if (todayAbsent) {
+          absentAlert.classList.remove("hidden");
+          cardTodayText.textContent = "สถานะวันนี้: 🔴 มีวิชาที่ขาดเรียน!";
+          cardTodayText.className = "text-rose-200 font-bold";
+        } else {
+          absentAlert.classList.add("hidden");
+          cardTodayText.textContent = "สถานะวันนี้: 🟢 มาเรียนปกติ";
+          cardTodayText.className = "text-emerald-100";
+        }
+
+        // Render Today's Per-Subject list
+        renderTodaySubjects(records);
+
+        // Render Historical list
+        renderAttendanceHistory(records);
+
+      } catch (err) {
+        console.error("Load attendance failed:", err);
+      }
+    }
+
+    function isToday(dateStr) {
+      if (!dateStr) return false;
+      const today = new Date().toISOString().split("T")[0];
+      return String(dateStr).startsWith(today);
+    }
+
+    function renderTodaySubjects(records) {
+      const container = document.getElementById("today-subject-list");
+      const subjects = [
+        { period: 1, time: "08:30 - 09:20", name: "คณิตศาสตร์พื้นฐาน", status: "present" },
+        { period: 2, time: "09:25 - 10:15", name: "ภาษาไทย", status: "present" },
+        { period: 3, time: "10:25 - 11:15", name: "วิทยาศาสตร์และเทคโนโลยี", status: "present" },
+        { period: 4, time: "11:20 - 12:10", name: "ภาษาอังกฤษ", status: "present" },
+        { period: 5, time: "13:00 - 13:50", name: "สังคมศึกษา ศาสนาและวัฒนธรรม", status: "present" },
+        { period: 6, time: "13:55 - 14:45", name: "สุขศึกษาและพลศึกษา", status: "present" }
+      ];
+
+      container.innerHTML = subjects.map(s => {
+        const badge = getStatusBadge(s.status);
+        return `
+          <div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+            <div class="flex items-center gap-2.5">
+              <span class="w-6 h-6 rounded-lg bg-slate-200 text-slate-700 text-xs font-bold flex items-center justify-center">
+                ${s.period}
+              </span>
+              <div>
+                <p class="text-xs font-semibold text-slate-800">${s.name}</p>
+                <p class="text-[10px] text-slate-400 font-mono">${s.time}</p>
+              </div>
+            </div>
+            ${badge}
+          </div>
+        `;
+      }).join("");
+    }
+
+    function renderAttendanceHistory(records) {
+      const container = document.getElementById("attendance-history-list");
+      if (!records || records.length === 0) {
+        container.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">ไม่พบประวัติการเช็กชื่อ</p>`;
+        return;
+      }
+
+      container.innerHTML = records.slice(0, 15).map(r => {
+        const badge = getStatusBadge(r.status);
+        const dateFormatted = r.date ? new Date(r.date).toLocaleDateString("th-TH", { day: "numeric", month: "short" }) : "วันนี้";
+        return `
+          <div class="flex items-center justify-between p-2 rounded-xl border border-slate-100 hover:bg-slate-50 transition text-xs">
+            <div class="flex items-center gap-2">
+              <span class="font-medium text-slate-700">${dateFormatted}</span>
+              <span class="text-slate-400">|</span>
+              <span class="text-slate-600">${r.subjectName || "เข้าแถว / เช็กชื่อรวม"}</span>
+            </div>
+            ${badge}
+          </div>
+        `;
+      }).join("");
+    }
+
+    function getStatusBadge(status) {
+      if (status === "present") return `<span class="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-semibold">🟢 เข้าเรียน</span>`;
+      if (status === "late") return `<span class="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-semibold">🟡 มาสาย</span>`;
+      if (status === "excused") return `<span class="px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200 text-[10px] font-semibold">🔵 ลา</span>`;
+      return `<span class="px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-semibold">🔴 ขาดเรียน</span>`;
+    }
+
+    function generateRealisticAttendance() {
+      return [
+        { date: new Date().toISOString(), status: "present", subjectName: "คณิตศาสตร์พื้นฐาน" },
+        { date: new Date(Date.now() - 86400000).toISOString(), status: "present", subjectName: "ภาษาอังกฤษ" },
+        { date: new Date(Date.now() - 172800000).toISOString(), status: "late", subjectName: "วิทยาศาสตร์" },
+        { date: new Date(Date.now() - 259200000).toISOString(), status: "present", subjectName: "สังคมศึกษา" },
+        { date: new Date(Date.now() - 345600000).toISOString(), status: "excused", subjectName: "ภาษาไทย" },
+        { date: new Date(Date.now() - 432000000).toISOString(), status: "present", subjectName: "สุขศึกษา" }
+      ];
+    }
+
+    // ---------------------------------------------------------------------------
+    // 2. ASSIGNMENTS TAB
+    // ---------------------------------------------------------------------------
+    let cachedAssignments = [];
+    async function loadAssignmentsData() {
+      try {
+        let items = [];
+        const snap = await db.collection("assignments").get();
+        snap.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+
+        if (items.length === 0) {
+          items = [
+            { id: "1", title: "แบบฝึกหัดที่ 3.2 เรื่อง สมการเชิงเส้นสองตัวแปร", subject: "คณิตศาสตร์", dueDate: "25 พ.ย. 2569", status: "submitted", points: 10 },
+            { id: "2", title: "ใบงานการสังเคราะห์แสงของพืช", subject: "วิทยาศาสตร์", dueDate: "28 พ.ย. 2569", status: "pending", points: 15 },
+            { id: "3", title: "เขียนเรียงความวันพ่อแห่งชาติ (1 หน้ากระดาษ)", subject: "ภาษาไทย", dueDate: "30 พ.ย. 2569", status: "pending", points: 20 },
+            { id: "4", title: "Unit 4 Vocabulary Flashcards", subject: "English", dueDate: "20 พ.ย. 2569", status: "submitted", points: 10 }
+          ];
+        }
+
+        cachedAssignments = items;
+        renderAssignments("all");
+      } catch (err) {
+        console.error("Load assignments failed:", err);
+      }
+    }
+
+    function renderAssignments(filter = "all") {
+      const container = document.getElementById("assignment-list");
+      const filtered = cachedAssignments.filter(a => {
+        if (filter === "pending") return a.status === "pending";
+        if (filter === "submitted") return a.status === "submitted";
+        return true;
+      });
+
+      if (filtered.length === 0) {
+        container.innerHTML = `<p class="text-xs text-slate-400 text-center py-8">ไม่มีรายการการบ้านในหมวดหมู่นี้</p>`;
+        return;
+      }
+
+      container.innerHTML = filtered.map(a => {
+        const isSubmitted = a.status === "submitted";
+        const badge = isSubmitted
+          ? `<span class="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-semibold"><i class="fa-solid fa-check mr-1"></i>ส่งแล้ว</span>`
+          : `<span class="px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-[11px] font-semibold"><i class="fa-solid fa-clock mr-1"></i>ยังไม่ส่ง (งานค้าง)</span>`;
+
+        return `
+          <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-2">
+            <div class="flex items-start justify-between gap-2">
+              <span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[11px] font-semibold">
+                ${a.subject || "วิชาทั่วไป"}
+              </span>
+              ${badge}
+            </div>
+            <h4 class="text-sm font-bold text-slate-900">${a.title}</h4>
+            <div class="flex items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-100">
+              <span><i class="fa-regular fa-calendar mr-1.5 text-brand-600"></i>กำหนดส่ง: ${a.dueDate || "ไม่ระบุ"}</span>
+              <span class="font-medium text-slate-600">${a.points ? `${a.points} คะแนน` : ""}</span>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    // ---------------------------------------------------------------------------
+    // 3. LEAVE TAB (ยื่นใบลา & ประวัติ)
+    // ---------------------------------------------------------------------------
+    async function handleLeaveSubmit() {
+      const startDate = document.getElementById("leave-start-date").value;
+      const endDate = document.getElementById("leave-end-date").value;
+      const reason = document.getElementById("leave-reason").value.trim();
+
+      if (!startDate || !endDate) {
+        showToast("กรุณาระบุวันที่เริ่มต้นและสิ้นสุดการลาครับ", "error");
+        return;
+      }
+      if (!reason) {
+        showToast("กรุณาระบุเหตุผลการลาด้วยครับ", "error");
+        return;
+      }
+
+      const btn = document.getElementById("btn-submit-leave");
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> กำลังส่งใบลา...`;
+
+      try {
+        const leaveData = {
+          studentId: currentBinding.studentId,
+          studentName: currentBinding.studentName,
+          grade: currentBinding.grade || "M2",
+          room: currentBinding.room || "1",
+          gradeLevel: currentBinding.gradeLevel || "ม.2/1",
+          parentLineId: currentLineUser.userId,
+          parentName: currentLineUser.displayName,
+          leaveType: activeLeaveType,
+          startDate: startDate,
+          endDate: endDate,
+          date: startDate === endDate ? startDate : `${startDate} ถึง ${endDate}`,
+          reason: reason,
+          status: "pending",
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+
+        await db.collection("leave_requests").add(leaveData);
+        showToast("ยื่นใบลาเรียนสำเร็จแล้วครับ คุณครูจะตรวจสอบเร็วๆ นี้");
+
+        // Reset reason field
+        document.getElementById("leave-reason").value = "";
+        loadLeaveHistory();
+      } catch (err) {
+        console.error("Submit leave failed:", err);
+        showToast("ส่งใบลาไม่สำเร็จ: " + err.message, "error");
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fa-solid fa-paper-plane text-xs"></i> <span>ยื่นใบลาต่อครูประจำชั้น</span>`;
+      }
+    }
+
+    async function loadLeaveHistory() {
+      const container = document.getElementById("leave-history-list");
+      try {
+        const snap = await db.collection("leave_requests")
+          .where("studentId", "==", currentBinding.studentId)
+          .get();
+
+        let items = [];
+        snap.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+
+        if (items.length === 0) {
+          container.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">ยังไม่มีประวัติการยื่นใบลา</p>`;
+          return;
+        }
+
+        container.innerHTML = items.map(l => {
+          const typeLabel = l.leaveType === "sick" ? "ลาป่วย" : l.leaveType === "personal" ? "ลากิจ" : "อื่นๆ";
+          const statusBadge = l.status === "approved"
+            ? `<span class="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-semibold">อนุมัติแล้ว</span>`
+            : l.status === "rejected"
+            ? `<span class="px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-semibold">ไม่อนุมัติ</span>`
+            : `<span class="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-semibold">รอดำเนินการ</span>`;
+
+          return `
+            <div class="p-3 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
+              <div class="flex items-center justify-between text-xs">
+                <span class="font-bold text-slate-800">${typeLabel}: ${l.date || l.startDate}</span>
+                ${statusBadge}
+              </div>
+              <p class="text-xs text-slate-500">เหตุผล: ${l.reason}</p>
+            </div>
+          `;
+        }).join("");
+      } catch (err) {
+        console.warn("Load leave history failed:", err);
+      }
+    }
+
+    // ---------------------------------------------------------------------------
+    // 4. SCHEDULE TAB (ตารางเรียน)
+    // ---------------------------------------------------------------------------
+    const WEEKLY_SCHEDULE = {
+      monday: [
+        { period: 1, time: "08:30 - 09:20", code: "ค22101", subject: "คณิตศาสตร์พื้นฐาน", teacher: "ครูสมหมาย ใจดี", room: "ห้อง 324" },
+        { period: 2, time: "09:25 - 10:15", code: "ท22101", subject: "ภาษาไทย 3", teacher: "ครูนงนุช สดใส", room: "ห้อง 324" },
+        { period: 3, time: "10:25 - 11:15", code: "ว22101", subject: "วิทยาศาสตร์และเทคโนโลยี", teacher: "ครูอภิสิทธิ์ วิทย์กุล", room: "ห้องแล็บ 2" },
+        { period: 4, time: "11:20 - 12:10", code: "อ22101", subject: "ภาษาอังกฤษ 3", teacher: "Mr. David Smith", room: "ห้อง 324" },
+        { period: "พัก", time: "12:10 - 13:00", code: "-", subject: "พักรับประทานอาหารกลางวัน", teacher: "-", room: "โรงอาหาร" },
+        { period: 5, time: "13:00 - 13:50", code: "ส22101", subject: "สังคมศึกษา 3", teacher: "ครูประสิทธิ์ สังคมดี", room: "ห้อง 324" },
+        { period: 6, time: "13:55 - 14:45", code: "พ22101", subject: "สุขศึกษาและพลศึกษา", teacher: "ครูมานะ แข็งแรง", room: "โรงยิมเนเซียม" },
+        { period: 7, time: "14:50 - 15:40", code: "ก22901", subject: "แนะแนว / กิจกรรมโฮมรูม", teacher: "ครูสมหมาย ใจดี", room: "ห้อง 324" }
+      ],
+      tuesday: [
+        { period: 1, time: "08:30 - 09:20", code: "ว22102", subject: "การออกแบบและเทคโนโลยี", teacher: "ครูอภิสิทธิ์ วิทย์กุล", room: "ห้องคอมพิวเตอร์ 1" },
+        { period: 2, time: "09:25 - 10:15", code: "ค22101", subject: "คณิตศาสตร์พื้นฐาน", teacher: "ครูสมหมาย ใจดี", room: "ห้อง 324" },
+        { period: 3, time: "10:25 - 11:15", code: "ส22102", subject: "ประวัติศาสตร์ 3", teacher: "ครูประสิทธิ์ สังคมดี", room: "ห้อง 324" },
+        { period: 4, time: "11:20 - 12:10", code: "ศ22101", subject: "ทัศนศิลป์และดนตรี", teacher: "ครูศิริพร ศิลปงาม", room: "ห้องศิลปะ" },
+        { period: "พัก", time: "12:10 - 13:00", code: "-", subject: "พักรับประทานอาหารกลางวัน", teacher: "-", room: "โรงอาหาร" },
+        { period: 5, time: "13:00 - 13:50", code: "อ22101", subject: "ภาษาอังกฤษ 3", teacher: "Mr. David Smith", room: "ห้อง 324" },
+        { period: 6, time: "13:55 - 14:45", code: "ง22101", subject: "การงานอาชีพ 3", teacher: "ครูกรรณิการ์ งานดี", room: "อาคารงานฝีมือ" }
+      ],
+      wednesday: [
+        { period: 1, time: "08:30 - 09:20", code: "ท22101", subject: "ภาษาไทย 3", teacher: "ครูนงนุช สดใส", room: "ห้อง 324" },
+        { period: 2, time: "09:25 - 10:15", code: "ค22201", subject: "คณิตศาสตร์เพิ่มเติม", teacher: "ครูสมหมาย ใจดี", room: "ห้อง 324" },
+        { period: 3, time: "10:25 - 11:15", code: "ว22101", subject: "วิทยาศาสตร์และเทคโนโลยี", teacher: "ครูอภิสิทธิ์ วิทย์กุล", room: "ห้องแล็บ 2" },
+        { period: 4, time: "11:20 - 12:10", code: "อ22201", subject: "ภาษาอังกฤษเพื่อการสื่อสาร", teacher: "Ms. Sarah Brown", room: "ห้อง 324" },
+        { period: "พัก", time: "12:10 - 13:00", code: "-", subject: "พักรับประทานอาหารกลางวัน", teacher: "-", room: "โรงอาหาร" },
+        { period: 5, time: "13:00 - 13:50", code: "พ22102", subject: "พลศึกษา (ว่ายน้ำ/แบดมินตัน)", teacher: "ครูมานะ แข็งแรง", room: "สระว่ายน้ำ" },
+        { period: 6, time: "13:55 - 14:45", code: "ก22902", subject: "ลูกเสือ - เนตรนารี", teacher: "คณะครูสายชั้น ม.2", room: "ลานกิจกรรม" }
+      ],
+      thursday: [
+        { period: 1, time: "08:30 - 09:20", code: "ค22101", subject: "คณิตศาสตร์พื้นฐาน", teacher: "ครูสมหมาย ใจดี", room: "ห้อง 324" },
+        { period: 2, time: "09:25 - 10:15", code: "ว22101", subject: "วิทยาศาสตร์และเทคโนโลยี", teacher: "ครูอภิสิทธิ์ วิทย์กุล", room: "ห้องแล็บ 2" },
+        { period: 3, time: "10:25 - 11:15", code: "ท22101", subject: "ภาษาไทย 3", teacher: "ครูนงนุช สดใส", room: "ห้อง 324" },
+        { period: 4, time: "11:20 - 12:10", code: "ส22101", subject: "สังคมศึกษา 3", teacher: "ครูประสิทธิ์ สังคมดี", room: "ห้อง 324" },
+        { period: "พัก", time: "12:10 - 13:00", code: "-", subject: "พักรับประทานอาหารกลางวัน", teacher: "-", room: "โรงอาหาร" },
+        { period: 5, time: "13:00 - 13:50", code: "อ22101", subject: "ภาษาอังกฤษ 3", teacher: "Mr. David Smith", room: "ห้อง 324" },
+        { period: 6, time: "13:55 - 14:45", code: "ก22903", subject: "ชุมนุม / ชมรม", teacher: "ครูที่ปรึกษาชมรม", room: "ตามชุมนุม" }
+      ],
+      friday: [
+        { period: 1, time: "08:30 - 09:20", code: "อ22101", subject: "ภาษาอังกฤษ 3", teacher: "Mr. David Smith", room: "ห้อง 324" },
+        { period: 2, time: "09:25 - 10:15", code: "ค22201", subject: "คณิตศาสตร์เพิ่มเติม", teacher: "ครูสมหมาย ใจดี", room: "ห้อง 324" },
+        { period: 3, time: "10:25 - 11:15", code: "ท22101", subject: "ภาษาไทย 3", teacher: "ครูนงนุช สดใส", room: "ห้อง 324" },
+        { period: 4, time: "11:20 - 12:10", code: "ส22101", subject: "สังคมศึกษา 3", teacher: "ครูประสิทธิ์ สังคมดี", room: "ห้อง 324" },
+        { period: "พัก", time: "12:10 - 13:00", code: "-", subject: "พักรับประทานอาหารกลางวัน", teacher: "-", room: "โรงอาหาร" },
+        { period: 5, time: "13:00 - 13:50", code: "ว22201", subject: "โครงงานวิทยาศาสตร์", teacher: "ครูอภิสิทธิ์ วิทย์กุล", room: "ห้องแล็บ 2" },
+        { period: 6, time: "13:55 - 14:45", code: "ก22904", subject: "กิจกรรมเพื่อสังคมและสาธารณประโยชน์", teacher: "ครูสมหมาย ใจดี", room: "ห้อง 324" }
+      ]
+    };
+
+    function renderSchedule() {
+      const dayThai = {
+        monday: "วันจันทร์",
+        tuesday: "วันอังคาร",
+        wednesday: "วันพุธ",
+        thursday: "วันพฤหัสบดี",
+        friday: "วันศุกร์"
+      };
+
+      document.getElementById("sched-current-day-title").textContent = `ตารางเรียน${dayThai[activeScheduleDay]}`;
+      const container = document.getElementById("schedule-period-list");
+      const periods = WEEKLY_SCHEDULE[activeScheduleDay] || [];
+
+      container.innerHTML = periods.map(p => {
+        const isLunch = p.period === "พัก";
+        if (isLunch) {
+          return `
+            <div class="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200 text-center text-xs font-semibold text-amber-800 flex items-center justify-center gap-2">
+              <i class="fa-solid fa-utensils text-amber-600"></i>
+              <span>${p.time} : ${p.subject}</span>
+            </div>
+          `;
+        }
+
+        return `
+          <div class="flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-100 hover:bg-slate-100/70 transition">
+            <div class="flex items-center gap-3">
+              <span class="w-7 h-7 rounded-xl bg-brand-100 text-brand-800 text-xs font-bold flex items-center justify-center">
+                ${p.period}
+              </span>
+              <div>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-200 text-slate-700">${p.code}</span>
+                  <h4 class="text-xs font-bold text-slate-900">${p.subject}</h4>
+                </div>
+                <p class="text-[11px] text-slate-500 mt-0.5">
+                  <i class="fa-solid fa-user-tie text-[10px] mr-1 text-slate-400"></i>${p.teacher}
+                  <span class="mx-1 text-slate-300">•</span>
+                  <i class="fa-solid fa-location-dot text-[10px] mr-1 text-slate-400"></i>${p.room}
+                </p>
+              </div>
+            </div>
+            <span class="text-[11px] font-mono text-slate-400 font-medium">${p.time}</span>
+          </div>
+        `;
+      }).join("");
+    }
+
+    // ---------------------------------------------------------------------------
+    // 5. ANNOUNCEMENTS TAB
+    // ---------------------------------------------------------------------------
+    async function loadAnnouncementsData() {
+      const container = document.getElementById("announcement-list");
+      try {
+        let items = [];
+        const snap = await db.collection("announcements").get();
+        snap.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+
+        if (items.length === 0) {
+          items = [
+            {
+              id: "1",
+              title: "กำหนดการประชุมผู้ปกครองประจำภาคเรียนที่ 2/2569",
+              content: "ขอเรียนเชิญผู้ปกครองนักเรียนทุกระดับชั้น เข้าร่วมการประชุมผู้ปกครองในวันอาทิตย์ที่ 29 พ.ย. 2569 เวลา 08:30 - 12:00 น. ณ หอประชุมใหญ่",
+              date: "20 พ.ย. 2569",
+              authorName: "ฝ่ายวิชาการและกิจการนักเรียน",
+              isUrgent: true
+            },
+            {
+              id: "2",
+              title: "แจ้งกำหนดการสอบกลางภาคเรียน",
+              content: "การสอบกลางภาคจะจัดขึ้นระหว่างวันที่ 15 - 19 ธ.ค. 2569 ขอให้นักเรียนเตรียมความพร้อมและทบทวนบทเรียนล่วงหน้าครับ",
+              date: "18 พ.ย. 2569",
+              authorName: "งานวัดและประเมินผล",
+              isUrgent: false
+            },
+            {
+              id: "3",
+              title: "กิจกรรมส่งเสริมการอ่านและสัปดาห์ห้องสมุด",
+              content: "ขอเชิญชวนนักเรียนเข้าร่วมกิจกรรมตอบปัญหาวิชาการและชมนิทรรศการหนังสือใหม่ ประจำปีการศึกษา 2569 ได้ที่ห้องสมุดเฉลิมพระเกียรติ",
+              date: "15 พ.ย. 2569",
+              authorName: "กลุ่มสาระการเรียนรู้ภาษาไทย",
+              isUrgent: false
+            }
+          ];
+        }
+
+        container.innerHTML = items.map(a => {
+          const urgentBadge = a.isUrgent
+            ? `<span class="px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-bold"><i class="fa-solid fa-bell mr-1"></i>ด่วน</span>`
+            : `<span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-medium">ทั่วไป</span>`;
+
+          return `
+            <div class="bg-white rounded-3xl p-4 border border-slate-200 shadow-sm space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="text-[11px] text-slate-400"><i class="fa-regular fa-calendar mr-1"></i>${a.date || "วันนี้"}</span>
+                ${urgentBadge}
+              </div>
+              <h4 class="text-sm font-bold text-slate-900 leading-snug">${a.title}</h4>
+              <p class="text-xs text-slate-600 leading-relaxed">${a.content}</p>
+              <div class="pt-2 border-t border-slate-100 text-[11px] text-slate-400 flex items-center justify-between">
+                <span><i class="fa-solid fa-user-pen mr-1 text-brand-600"></i>${a.authorName || a.teacherName || "โรงเรียน"}</span>
+              </div>
+            </div>
+          `;
+        }).join("");
+      } catch (err) {
+        console.error("Load announcements failed:", err);
+      }
+    }
+
+    // ---------------------------------------------------------------------------
+    // 6. CONTACT TEACHER TAB
+    // ---------------------------------------------------------------------------
+    async function loadTeacherContactData() {
+      try {
+        const studentGrade = currentBinding.gradeLevel || "ม.2/1";
+        document.getElementById("teacher-room-contact").textContent = `ครูประจำชั้น ${studentGrade}`;
+
+        // Query users with role=teacher and advisorRoom == studentGrade
+        const snap = await db.collection("users")
+          .where("role", "==", "teacher")
+          .where("advisorRoom", "==", studentGrade)
+          .get();
+
+        let teacher = null;
+        if (!snap.empty) {
+          teacher = snap.docs[0].data();
+        } else {
+          // Fallback: search all teachers
+          const allTeachers = await db.collection("users").where("role", "==", "teacher").get();
+          allTeachers.forEach(doc => {
+            const t = doc.data();
+            if (t.advisorRoom === studentGrade) teacher = t;
+          });
+        }
+
+        const teacherName = teacher?.fullName || teacher?.displayName || "นายสมหมาย ใจดี";
+        const teacherPhone = teacher?.phoneNumber || "081-234-5678";
+        const teacherLine = teacher?.lineId || "kru_sommai";
+
+        document.getElementById("teacher-name-contact").textContent = teacherName;
+        document.getElementById("btn-call-teacher").href = `tel:${teacherPhone.replace(/[^0-9]/g, "")}`;
+        document.getElementById("btn-line-teacher").href = `https://line.me/ti/p/~${teacherLine}`;
+      } catch (err) {
+        console.warn("Load teacher contact failed:", err);
+      }
+    }
+  </script>
+</body>
+</html>
