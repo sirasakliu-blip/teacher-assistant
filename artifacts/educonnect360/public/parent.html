@@ -120,47 +120,31 @@
 
       <!-- Binding Form Card -->
       <div class="bg-white rounded-3xl p-5 border border-slate-200/90 shadow-sm space-y-4">
-        <!-- Step 1: Grade Selection (ม.1 - ม.6) -->
+        <!-- Step 1: Grade Selection (ม.1/1 - ม.6/1) -->
         <div>
           <label class="block text-xs font-bold text-slate-700 mb-2 flex items-center justify-between">
-            <span><i class="fa-solid fa-graduation-cap text-brand-600 mr-1.5"></i>1. เลือกระดับชั้นปี (ม.1 - ม.6)</span>
-            <span class="text-[11px] font-normal text-slate-400">จำเป็น</span>
+            <span><i class="fa-solid fa-graduation-cap text-brand-600 mr-1.5"></i>1. เลือกระดับชั้นเรียน (ม.1/1 - ม.6/1)</span>
+            <span class="text-[11px] font-normal text-slate-400">จำเป็น (1 ห้องต่อชั้นเรียน)</span>
           </label>
           <div class="grid grid-cols-3 gap-2" id="grade-chips">
-            <button type="button" data-grade="M1" data-gradename="ม.1" class="grade-chip py-2.5 px-3 rounded-xl border border-slate-200 font-semibold text-xs text-slate-700 hover:border-brand-500 transition">ม.1</button>
-            <button type="button" data-grade="M2" data-gradename="ม.2" class="grade-chip py-2.5 px-3 rounded-xl border border-slate-200 font-semibold text-xs text-slate-700 hover:border-brand-500 transition">ม.2</button>
-            <button type="button" data-grade="M3" data-gradename="ม.3" class="grade-chip py-2.5 px-3 rounded-xl border border-slate-200 font-semibold text-xs text-slate-700 hover:border-brand-500 transition">ม.3</button>
-            <button type="button" data-grade="M4" data-gradename="ม.4" class="grade-chip py-2.5 px-3 rounded-xl border border-slate-200 font-semibold text-xs text-slate-700 hover:border-brand-500 transition">ม.4</button>
-            <button type="button" data-grade="M5" data-gradename="ม.5" class="grade-chip py-2.5 px-3 rounded-xl border border-slate-200 font-semibold text-xs text-slate-700 hover:border-brand-500 transition">ม.5</button>
-            <button type="button" data-grade="M6" data-gradename="ม.6" class="grade-chip py-2.5 px-3 rounded-xl border border-slate-200 font-semibold text-xs text-slate-700 hover:border-brand-500 transition">ม.6</button>
+            <button type="button" data-grade="M1" data-gradename="ม.1" class="grade-chip py-3 px-3 rounded-xl border border-slate-200 font-bold text-xs text-slate-700 hover:border-brand-500 transition">ม.1/1</button>
+            <button type="button" data-grade="M2" data-gradename="ม.2" class="grade-chip py-3 px-3 rounded-xl border border-slate-200 font-bold text-xs text-slate-700 hover:border-brand-500 transition">ม.2/1</button>
+            <button type="button" data-grade="M3" data-gradename="ม.3" class="grade-chip py-3 px-3 rounded-xl border border-slate-200 font-bold text-xs text-slate-700 hover:border-brand-500 transition">ม.3/1</button>
+            <button type="button" data-grade="M4" data-gradename="ม.4" class="grade-chip py-3 px-3 rounded-xl border border-slate-200 font-bold text-xs text-slate-700 hover:border-brand-500 transition">ม.4/1</button>
+            <button type="button" data-grade="M5" data-gradename="ม.5" class="grade-chip py-3 px-3 rounded-xl border border-slate-200 font-bold text-xs text-slate-700 hover:border-brand-500 transition">ม.5/1</button>
+            <button type="button" data-grade="M6" data-gradename="ม.6" class="grade-chip py-3 px-3 rounded-xl border border-slate-200 font-bold text-xs text-slate-700 hover:border-brand-500 transition">ม.6/1</button>
           </div>
         </div>
 
-        <!-- Step 2: Room Selection (ห้อง 1 - 6) -->
-        <div>
-          <label class="block text-xs font-bold text-slate-700 mb-2 flex items-center justify-between">
-            <span><i class="fa-solid fa-door-open text-brand-600 mr-1.5"></i>2. เลือกห้องเรียน (ห้อง 1 - 6)</span>
-            <span class="text-[11px] font-normal text-slate-400">จำเป็น</span>
-          </label>
-          <div class="grid grid-cols-6 gap-1.5" id="room-chips">
-            <button type="button" data-room="1" class="room-chip py-2 rounded-xl border border-slate-200 font-semibold text-xs text-slate-700 hover:border-brand-500 transition">1</button>
-            <button type="button" data-room="2" class="room-chip py-2 rounded-xl border border-slate-200 font-semibold text-xs text-slate-700 hover:border-brand-500 transition">2</button>
-            <button type="button" data-room="3" class="room-chip py-2 rounded-xl border border-slate-200 font-semibold text-xs text-slate-700 hover:border-brand-500 transition">3</button>
-            <button type="button" data-room="4" class="room-chip py-2 rounded-xl border border-slate-200 font-semibold text-xs text-slate-700 hover:border-brand-500 transition">4</button>
-            <button type="button" data-room="5" class="room-chip py-2 rounded-xl border border-slate-200 font-semibold text-xs text-slate-700 hover:border-brand-500 transition">5</button>
-            <button type="button" data-room="6" class="room-chip py-2 rounded-xl border border-slate-200 font-semibold text-xs text-slate-700 hover:border-brand-500 transition">6</button>
-          </div>
-        </div>
-
-        <!-- Step 3: Student Selection -->
+        <!-- Step 2: Student Selection -->
         <div>
           <label class="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
-            <span><i class="fa-solid fa-user-check text-brand-600 mr-1.5"></i>3. เลือกชื่อนักเรียน</span>
-            <span id="student-count-badge" class="text-[11px] font-normal text-brand-600">กรุณาเลือกชั้นและห้องก่อน</span>
+            <span><i class="fa-solid fa-user-check text-brand-600 mr-1.5"></i>2. เลือกชื่อนักเรียน</span>
+            <span id="student-count-badge" class="text-[11px] font-normal text-brand-600">กรุณาเลือกระดับชั้นก่อน</span>
           </label>
           <div class="relative">
             <select id="student-select" disabled class="w-full px-3.5 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-50 transition appearance-none">
-              <option value="">-- รอการเลือกระดับชั้นและห้อง --</option>
+              <option value="">-- รอการเลือกระดับชั้น --</option>
             </select>
             <i class="fa-solid fa-chevron-down absolute right-3.5 top-4 text-xs text-slate-400 pointer-events-none"></i>
           </div>
@@ -566,7 +550,7 @@
     let currentBinding = null;
     let selectedGrade = "";     // e.g. "M2"
     let selectedGradeName = ""; // e.g. "ม.2"
-    let selectedRoom = "";      // e.g. "1"
+    let selectedRoom = "1";      // Default to room 1 (1 ห้องต่อชั้นเรียน)
     let activeTab = "attendance";
     let activeScheduleDay = "monday";
     let activeLeaveType = "sick";
@@ -743,21 +727,7 @@
           chip.classList.add("border-brand-600", "bg-brand-50", "text-brand-700", "font-bold");
           selectedGrade = chip.dataset.grade;
           selectedGradeName = chip.dataset.gradename;
-          fetchStudentsForBinding();
-        });
-      });
-
-      // Room chips click
-      const roomChips = document.querySelectorAll(".room-chip");
-      roomChips.forEach(chip => {
-        chip.addEventListener("click", () => {
-          roomChips.forEach(c => {
-            c.classList.remove("border-brand-600", "bg-brand-50", "text-brand-700", "font-bold");
-            c.classList.add("border-slate-200", "text-slate-700");
-          });
-          chip.classList.remove("border-slate-200", "text-slate-700");
-          chip.classList.add("border-brand-600", "bg-brand-50", "text-brand-700", "font-bold");
-          selectedRoom = chip.dataset.room;
+          selectedRoom = "1";
           fetchStudentsForBinding();
         });
       });
@@ -843,10 +813,11 @@
     }
 
     async function handleSaveBinding() {
-      if (!selectedGrade || !selectedRoom) {
-        showToast("กรุณาเลือกระดับชั้น (ม.1 - ม.6) และห้องเรียนก่อนครับ", "error");
+      if (!selectedGrade) {
+        showToast("กรุณาเลือกระดับชั้นเรียน (ม.1/1 - ม.6/1) ก่อนครับ", "error");
         return;
       }
+      selectedRoom = "1";
 
       const studentSelect = document.getElementById("student-select");
       const manualName = document.getElementById("manual-student-name").value.trim();
