@@ -1,11 +1,12 @@
-import { useState, type FormEvent } from "react";
+import { useState, useEffect, type FormEvent } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { lookupThaiPostalCode } from "@/lib/thai-geo";
+import type { User as FirebaseUser } from "firebase/auth";
 
 export default function AdminRegister() {
-  const { registerAdmin } = useAuth();
+  const { registerAdminWithGoogle, selectGoogleAccount, firebaseUser, profile, loading } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
@@ -18,10 +19,23 @@ export default function AdminRegister() {
   const [affiliation, setAffiliation] = useState("สพฐ.");
   const [detectedLocation, setDetectedLocation] = useState<string | null>(null);
 
+  // Admin Account & Security Key state
+  const [selectedGoogleUser, setSelectedGoogleUser] = useState<FirebaseUser | null>(null);
+  const [selectingGoogle, setSelectingGoogle] = useState(false);
   const [displayName, setDisplayName] = useState("");
-  const [email, setEmail] = useState("");
+  const [securityKey, setSecurityKey] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!loading && firebaseUser && profile) {
+      if (profile.role === "admin") setLocation("/admin");
+      else if (profile.role === "teacher") setLocation("/teacher");
+      else if (profile.role === "parent") setLocation("/parent");
+      else setLocation("/student");
+    }
+  }, [loading, firebaseUser, profile, setLocation]);
 
   function handlePostalCodeChange(val: string) {
     const clean = val.replace(/\D/g, "").slice(0, 5);
@@ -43,34 +57,118 @@ export default function AdminRegister() {
     }
   }
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    const cleanEmail = email.trim().toLowerCase();
-
-    // 1. Condition: must end with .ac.th
-    if (!cleanEmail.endsWith(".ac.th")) {
+  async function handleSelectGoogle() {
+    setSelectingGoogle(true);
+    try {
+      const user = await selectGoogleAccount();
+      setSelectedGoogleUser(user);
+      if (!displayName.trim() && user.displayName) {
+        setDisplayName(user.displayName);
+      }
+      toast({
+        title: "เชื่อมต่อบัญชี Google แล้ว",
+        description: `อีเมล: ${user.email}`,
+      });
+    } catch (err: any) {
+      console.error("Google selection error:", err);
+      let errorMsg = "ไม่สามารถเชื่อมต่อบัญชี Google ได้";
+      if (err?.code === "auth/popup-closed-by-user") {
+        errorMsg = "หน้าต่างเลือกบัญชีถูกปิดก่อนทำรายการสำเร็จ";
+      } else if (err?.code === "auth/operation-not-allowed") {
+        errorMsg = "ยังไม่ได้เปิดใช้งาน Google Provider ใน Firebase Console";
+      } else if (err?.code === "auth/unauthorized-domain") {
+        errorMsg = `โดเมน ${window.location.hostname} ยังไม่ได้รับอนุญาตใน Firebase ให้เพิ่มใน Authentication > Settings > Authorized domains`;
+      } else if (err?.message) {
+        errorMsg = err.message;
+      }
       toast({
         variant: "destructive",
-        title: "รูปแบบอีเมลไม่ถูกต้อง",
-        description: "อีเมลสำหรับผู้ดูแลระบบต้องเป็นอีเมลทางการของสถานศึกษาที่ลงท้ายด้วย .ac.th เท่านั้น",
+        title: "เลือกบัญชีไม่สำเร็จ",
+        description: errorMsg,
+      });
+    } finally {
+      setSelectingGoogle(false);
+    }
+  }
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+
+    if (!selectedGoogleUser) {
+      toast({
+        variant: "destructive",
+        title: "กรุณาเชื่อมต่อบัญชี Google",
+        description: "กดปุ่ม 'ลงชื่อเข้าใช้ด้วย Google' เพื่อเชื่อมต่อบัญชีสถานศึกษาของคุณ",
+      });
+      return;
+    }
+
+    if (!displayName.trim()) {
+      toast({
+        variant: "destructive",
+        title: "กรุณากรอกชื่อ-นามสกุล",
+        description: "กรุณาใส่ชื่อ - นามสกุลจริงพร้อมคำนำหน้า",
+      });
+      return;
+    }
+
+    if (!securityKey.trim()) {
+      toast({
+        variant: "destructive",
+        title: "กรุณากรอกรหัสความปลอดภัยผู้ดูแลระบบ",
+        description: "จำเป็นต้องระบุรหัสความปลอดภัย (Admin Security Key) เพื่อยืนยันสิทธิ์แอดมิน",
+      });
+      return;
+    }
+
+    if (!password) {
+      toast({
+        variant: "destructive",
+        title: "กรุณากำหนดรหัสผ่าน",
+        description: "กำหนดรหัสผ่านอย่างน้อย 6 ตัวอักษร เพื่อใช้เข้าสู่ระบบเว็บ",
+      });
+      return;
+    }
+
+    if (password.length < 6) {
+      toast({
+        variant: "destructive",
+        title: "รหัสผ่านสั้นเกินไป",
+        description: "รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร",
+      });
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      toast({
+        variant: "destructive",
+        title: "รหัสผ่านไม่ตรงกัน",
+        description: "กรุณาตรวจสอบการยืนยันรหัสผ่านอีกครั้ง",
       });
       return;
     }
 
     setSubmitting(true);
     try {
-      await registerAdmin(cleanEmail, password, displayName, {
-        schoolName: schoolName.trim() || undefined,
-        postalCode: postalCode.trim() || undefined,
-        province: province.trim() || undefined,
-        district: district.trim() || undefined,
-        subDistrict: subDistrict.trim() || undefined,
-      });
+      await registerAdminWithGoogle(
+        selectedGoogleUser,
+        displayName.trim(),
+        securityKey.trim(),
+        {
+          schoolName: schoolName.trim() || undefined,
+          postalCode: postalCode.trim() || undefined,
+          province: province.trim() || undefined,
+          district: district.trim() || undefined,
+          subDistrict: subDistrict.trim() || undefined,
+        },
+        password
+      );
+
       toast({
         title: "ลงทะเบียนผู้ดูแลระบบสำเร็จ",
-        description: "ระบบได้ส่งลิงก์ยืนยันตัวตนไปยังอีเมลของคุณแล้ว กรุณายืนยันก่อนเข้าสู่ระบบ",
+        description: `ยินดีต้อนรับ ${displayName} เข้าสู่แผงควบคุม EduConnect360`,
       });
-      setLocation("/admin-verify-email");
+      setLocation("/admin");
     } catch (err) {
       toast({
         variant: "destructive",
@@ -111,10 +209,10 @@ export default function AdminRegister() {
             </div>
           </div>
 
-          <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-400 mb-5 flex items-start gap-2.5">
-            <i className="fa-solid fa-circle-exclamation text-sm shrink-0 mt-0.5" />
+          <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-800 dark:text-emerald-300 mb-5 flex items-start gap-2.5">
+            <i className="fa-solid fa-shield-check text-sm shrink-0 mt-0.5 text-emerald-600" />
             <span>
-              เฉพาะอีเมลที่ได้รับการอนุมัติใน <strong>Whitelist</strong> ของสถานศึกษา และลงท้ายด้วย <strong>.ac.th</strong> เท่านั้นจึงจะสามารถลงทะเบียนได้
+              เชื่อมต่อด้วยบัญชี Google ของสถานศึกษา และระบุ <strong>รหัสความปลอดภัยผู้ดูแลระบบ (Admin Security Key)</strong> เพื่อยืนยันสิทธิ์เข้าใช้งาน
             </span>
           </div>
 
@@ -243,49 +341,170 @@ export default function AdminRegister() {
               )}
             </div>
 
+            {/* Google Account Fast Connect (กดเลือกบัญชีเหมือนระบบสมัครครู) */}
+            <div className="rounded-2xl p-4 bg-muted/40 border border-border/80 text-center space-y-3">
+              <p className="text-xs text-muted-foreground font-medium flex items-center justify-center gap-1.5">
+                <span className="text-primary text-sm">✦</span> ใช้บัญชี Google เพื่อยืนยันตัวตนผู้ดูแลระบบ
+              </p>
+
+              {!selectedGoogleUser ? (
+                <button
+                  type="button"
+                  onClick={handleSelectGoogle}
+                  disabled={selectingGoogle}
+                  className="w-full py-3 px-4 rounded-xl border border-border bg-white hover:bg-slate-50 dark:bg-card dark:hover:bg-accent text-slate-800 dark:text-foreground font-semibold text-xs sm:text-sm transition-all duration-200 shadow-sm flex items-center justify-center gap-3 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-60 cursor-pointer"
+                >
+                  {selectingGoogle ? (
+                    <>
+                      <i className="fa-solid fa-circle-notch fa-spin text-primary" />
+                      <span>กำลังเปิดหน้าต่าง Google...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                        <path
+                          fill="#4285F4"
+                          d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                        />
+                        <path
+                          fill="#34A853"
+                          d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                        />
+                        <path
+                          fill="#FBBC05"
+                          d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                        />
+                        <path
+                          fill="#EA4335"
+                          d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                        />
+                      </svg>
+                      <span>ลงชื่อเข้าใช้ด้วย Google</span>
+                    </>
+                  )}
+                </button>
+              ) : (
+                <div className="flex items-center justify-between p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 text-left">
+                  <div className="flex items-center gap-3 overflow-hidden">
+                    <div className="w-9 h-9 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shrink-0 overflow-hidden">
+                      {selectedGoogleUser.photoURL ? (
+                        <img
+                          src={selectedGoogleUser.photoURL}
+                          alt="Google Profile"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <i className="fa-brands fa-google" />
+                      )}
+                    </div>
+                    <div className="truncate">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-bold text-emerald-900 dark:text-emerald-200 truncate">
+                          {selectedGoogleUser.email}
+                        </span>
+                        <i className="fa-solid fa-circle-check text-emerald-600 text-xs shrink-0" />
+                      </div>
+                      <span className="text-[11px] text-emerald-700/80 dark:text-emerald-300 block">
+                        เชื่อมต่อบัญชี Google เรียบร้อย
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSelectGoogle}
+                    className="text-xs text-slate-500 hover:text-emerald-800 dark:text-slate-400 dark:hover:text-emerald-300 underline shrink-0 ml-2 cursor-pointer"
+                  >
+                    เปลี่ยน
+                  </button>
+                </div>
+              )}
+            </div>
+
             {/* Admin Profile Section */}
             <div>
               <label className="block text-xs font-semibold text-foreground mb-1.5">
-                ชื่อ-นามสกุล ผู้ดูแลระบบ
+                ชื่อ-นามสกุล ผู้ดูแลระบบ (พร้อมคำนำหน้า)
               </label>
-              <input
-                type="text"
-                required
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="กรุณาใส่ชื่อ - นามสกุล"
-                className="w-full px-4 py-2.5 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm"
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  required
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder="กรุณาใส่ชื่อ - นามสกุล"
+                  className="w-full px-4 py-2.5 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm"
+                />
+                <i className="fa-solid fa-user absolute right-3.5 top-3.5 text-muted-foreground/60 text-xs pointer-events-none" />
+              </div>
             </div>
 
+            {/* รหัสความปลอดภัยผู้ดูแลระบบ (Admin Security Key แทน .ac.th) */}
             <div>
               <label className="block text-xs font-semibold text-foreground mb-1.5 flex items-center justify-between">
-                <span>อีเมลทางการสถานศึกษา (.ac.th)</span>
-                <span className="text-[11px] text-primary font-mono font-medium">*.ac.th only</span>
+                <span>รหัสความปลอดภัยผู้ดูแลระบบ (Admin Security Key)</span>
+                <span className="text-[11px] font-normal text-muted-foreground">ระบบความปลอดภัยสถานศึกษา</span>
               </label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@school.ac.th"
-                className="w-full px-4 py-2.5 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm"
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  required
+                  value={securityKey}
+                  onChange={(e) => setSecurityKey(e.target.value.replace(/\s+/g, ""))}
+                  placeholder="เช่น ADM-XXXX-XX หรือรหัสความปลอดภัยของโรงเรียน"
+                  className="w-full px-4 py-2.5 rounded-xl bg-primary/5 border border-primary/30 focus:outline-none focus:ring-2 focus:ring-primary text-foreground font-mono uppercase tracking-wider placeholder:normal-case placeholder:tracking-normal placeholder:font-sans placeholder:text-muted-foreground/60 text-sm"
+                />
+                <i className="fa-solid fa-key absolute right-3.5 top-3 text-muted-foreground/60 text-xs" />
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                ใช้รหัสความปลอดภัยที่ได้รับมอบหมายเพื่อยืนยันสิทธิ์แอดมิน (สามารถใช้รหัสตั้งต้น <code className="font-mono text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded">ADMIN2026</code> ได้)
+              </p>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-foreground mb-1.5">
-                รหัสผ่านสำหรับเข้าสู่ระบบ
-              </label>
-              <input
-                type="password"
-                required
-                minLength={6}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="อย่างน้อย 6 ตัวอักษร"
-                className="w-full px-4 py-2.5 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm"
-              />
+            {/* กำหนดรหัสผ่านเข้าใช้งานเว็บ */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-start">
+              <div>
+                <label className="block text-xs font-semibold text-foreground mb-1.5">
+                  กำหนดรหัสผ่าน (อย่างน้อย 6 ตัวอักษร)
+                </label>
+                <div className="relative">
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full px-4 py-2.5 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm"
+                  />
+                  <i className="fa-solid fa-lock absolute right-3.5 top-3.5 text-muted-foreground/60 text-xs pointer-events-none" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-foreground mb-1.5">
+                  ยืนยันรหัสผ่าน
+                </label>
+                <div className="relative">
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full px-4 py-2.5 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm"
+                  />
+                  <i className="fa-solid fa-shield-check absolute right-3.5 top-3.5 text-muted-foreground/60 text-xs pointer-events-none" />
+                </div>
+              </div>
+            </div>
+
+            {/* คำแนะนำการตั้งรหัสผ่าน */}
+            <div className="p-3 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800/50 flex items-start gap-2.5 text-amber-900 dark:text-amber-200 text-xs">
+              <i className="fa-solid fa-circle-info text-amber-600 dark:text-amber-400 mt-0.5 text-sm shrink-0" />
+              <div className="leading-relaxed">
+                <span className="font-semibold">คำแนะนำการตั้งรหัสผ่าน:</span> รหัสผ่านนี้เป็นรหัสสำหรับเข้าสู่ระบบของ <strong>EduConnect360</strong> เท่านั้น <span className="underline font-medium">ซึ่งไม่เกี่ยวข้องกับรหัสผ่าน Email ของผู้ใช้งาน</span>
+              </div>
             </div>
 
             <button

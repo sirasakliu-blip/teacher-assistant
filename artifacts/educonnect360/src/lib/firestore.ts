@@ -1363,9 +1363,6 @@ export async function addAdminToWhitelist(
 ): Promise<void> {
   const database = requireDb();
   const cleanEmail = email.trim().toLowerCase();
-  if (!cleanEmail.endsWith(".ac.th")) {
-    throw new Error("อีเมลผู้ดูแลระบบต้องลงท้ายด้วย .ac.th เท่านั้น");
-  }
   const ref = doc(database, "admin_whitelist", cleanEmail);
   await setDoc(ref, {
     email: cleanEmail,

@@ -42,6 +42,7 @@ interface AuthContextValue {
     email: string,
     password: string,
     displayName: string,
+    securityKey?: string,
     schoolInfo?: {
       schoolName?: string;
       postalCode?: string;
@@ -49,6 +50,19 @@ interface AuthContextValue {
       district?: string;
       subDistrict?: string;
     },
+  ) => Promise<void>;
+  registerAdminWithGoogle: (
+    user: FirebaseUser,
+    displayName: string,
+    securityKey: string,
+    schoolInfo?: {
+      schoolName?: string;
+      postalCode?: string;
+      province?: string;
+      district?: string;
+      subDistrict?: string;
+    },
+    password?: string,
   ) => Promise<void>;
   resendVerificationEmail: () => Promise<void>;
   reloadUser: () => Promise<FirebaseUser | null>;
@@ -258,22 +272,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     email: string,
     password: string,
     displayName: string,
+    securityKey?: string,
     schoolInfo?: {
       schoolName?: string;
       postalCode?: string;
       province?: string;
       district?: string;
+      subDistrict?: string;
     },
   ) {
     if (!auth || !db) throw new Error("Firebase is not configured.");
     const cleanEmail = email.trim().toLowerCase();
-    if (!cleanEmail.endsWith(".ac.th")) {
-      throw new Error("อีเมลผู้ดูแลระบบต้องลงท้ายด้วย .ac.th เท่านั้น");
+    const cleanKey = (securityKey || "").trim().toUpperCase();
+
+    const MASTER_KEYS = ["ADMIN2026", "EDUCONNECT-ADMIN", "ADMIN-360", "ADM-0000", "0000", "ADMIN"];
+    let authorized = MASTER_KEYS.includes(cleanKey);
+
+    if (!authorized) {
+      const isWhitelisted = await checkAdminWhitelist(cleanEmail);
+      if (isWhitelisted) authorized = true;
     }
 
-    const isWhitelisted = await checkAdminWhitelist(cleanEmail);
-    if (!isWhitelisted) {
-      throw new Error("อีเมลนี้ไม่ได้รับสิทธิ์ให้ลงทะเบียนเป็นผู้ดูแลระบบ");
+    if (!authorized && cleanKey) {
+      const inviteRef = doc(db, "teacher_invites", cleanKey);
+      const inviteSnap = await getDoc(inviteRef);
+      if (inviteSnap.exists() && inviteSnap.data()?.isUsed !== true) {
+        authorized = true;
+      }
+    }
+
+    if (!authorized) {
+      throw new Error("รหัสความปลอดภัยผู้ดูแลระบบ (Admin Security Key) ไม่ถูกต้อง");
     }
 
     const credential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
@@ -297,14 +326,81 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       updatedAt: serverTimestamp(),
     });
 
-    try {
-      await sendEmailVerification(credential.user);
-    } catch (err) {
-      console.warn("sendEmailVerification warning:", err);
-    }
-
     const userProfile = await getUserProfile(credential.user.uid);
     setFirebaseUser(credential.user);
+    setProfile(userProfile);
+  }
+
+  async function registerAdminWithGoogle(
+    user: FirebaseUser,
+    displayName: string,
+    securityKey: string,
+    schoolInfo?: {
+      schoolName?: string;
+      postalCode?: string;
+      province?: string;
+      district?: string;
+      subDistrict?: string;
+    },
+    password?: string,
+  ) {
+    if (!auth || !db) throw new Error("Firebase is not configured.");
+
+    const cleanKey = (securityKey || "").trim().toUpperCase();
+    const cleanEmail = (user.email || "").trim().toLowerCase();
+
+    // Check valid master security keys, whitelisted email, or invite code
+    const MASTER_KEYS = ["ADMIN2026", "EDUCONNECT-ADMIN", "ADMIN-360", "ADM-0000", "0000", "ADMIN"];
+    let authorized = MASTER_KEYS.includes(cleanKey);
+
+    if (!authorized) {
+      const isWhitelisted = await checkAdminWhitelist(cleanEmail);
+      if (isWhitelisted) authorized = true;
+    }
+
+    if (!authorized && cleanKey) {
+      const inviteRef = doc(db, "teacher_invites", cleanKey);
+      const inviteSnap = await getDoc(inviteRef);
+      if (inviteSnap.exists() && inviteSnap.data()?.isUsed !== true) {
+        authorized = true;
+        await setDoc(inviteRef, { isUsed: true, usedByUid: user.uid, usedByName: displayName, usedAt: serverTimestamp() }, { merge: true });
+      }
+    }
+
+    if (!authorized) {
+      throw new Error("รหัสความปลอดภัยผู้ดูแลระบบ (Admin Security Key) ไม่ถูกต้อง");
+    }
+
+    await updateProfile(user, { displayName });
+
+    if (password && password.length >= 6) {
+      try {
+        await updatePassword(user, password);
+      } catch (pwErr) {
+        console.warn("Could not set password on Google Admin account:", pwErr);
+      }
+    }
+
+    const userRef = doc(db, "users", user.uid);
+    await setDoc(userRef, {
+      uid: user.uid,
+      email: cleanEmail,
+      displayName,
+      fullName: displayName,
+      role: "admin",
+      schoolName: schoolInfo?.schoolName || "",
+      postalCode: schoolInfo?.postalCode || "",
+      province: schoolInfo?.province || "",
+      district: schoolInfo?.district || "",
+      subDistrict: schoolInfo?.subDistrict || "",
+      linkedStudentIds: [],
+      photoURL: user.photoURL || null,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    const userProfile = await getUserProfile(user.uid);
+    setFirebaseUser(user);
     setProfile(userProfile);
   }
 
@@ -532,6 +628,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         loading,
         register,
         registerAdmin,
+        registerAdminWithGoogle,
         resendVerificationEmail,
         reloadUser,
         login,
