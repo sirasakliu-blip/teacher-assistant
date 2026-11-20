@@ -29,7 +29,7 @@ export default function TeacherAiAssistant() {
   // =========================================================================
   // STATE: แท็บ 3 - ปรึกษา AI ทั่วไป [C]
   // =========================================================================
-  const [selectedChatAgent, setSelectedChatAgent] = useState<AgentKey>("pa");
+  const [selectedChatAgent, setSelectedChatAgent] = useState<AgentKey>("plan");
   const [generalPrompt, setGeneralPrompt] = useState("");
   const [generalPromptOutput, setGeneralPromptOutput] = useState<string | null>(null);
 
@@ -72,7 +72,7 @@ export default function TeacherAiAssistant() {
 หน่วยการเรียนรู้/เรื่อง: ${planTopic}
 รูปแบบการจัดการเรียนรู้: ${planModel}
 มาตรฐาน/ตัวชี้วัด: ${standardText}
-ขอเป็นแผนแบบเต็ม มีจุดประสงค์ สาระสำคัญ กิจกรรม สื่อ และการวัดประเมินผล และออกเป็นไฟล์ Word`;
+ขอแผนแบบเต็ม มีจุดประสงค์ สาระสำคัญ กิจกรรม สื่อ การวัดประเมินผล และออกเป็นไฟล์ Word`;
 
     // 3. คัดลอกข้อความลงคลิปบอร์ด
     await copyToClipboard(promptText);
@@ -141,11 +141,11 @@ export default function TeacherAiAssistant() {
       color: "text-amber-700 bg-amber-50 border-amber-200",
     },
     {
-      key: "parent",
-      name: "ปรึกษาและสื่อสารผู้ปกครอง",
-      description: "ร่างข้อความแจ้งผู้ปกครอง ตอบข้อซักถาม และแนวทางดูแลนักเรียนร่วมกัน",
-      icon: "fa-solid fa-comments",
-      color: "text-purple-700 bg-purple-50 border-purple-200",
+      key: "plan",
+      name: "แผนการจัดการเรียนรู้",
+      description: "ร่างและตรวจแผนการจัดการเรียนรู้ อ้างอิงตัวชี้วัดหลักสูตรแกนกลางฯ ครบ 8 กลุ่มสาระ ออกไฟล์ Word ได้",
+      icon: "fa-solid fa-book-bookmark",
+      color: "text-emerald-700 bg-emerald-50 border-emerald-200",
     },
   ];
 
@@ -368,7 +368,7 @@ export default function TeacherAiAssistant() {
                     <span className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs shrink-0">
                       <i className="fa-solid fa-check" />
                     </span>
-                    <span>✅ คัดลอกคำสั่งแล้ว — ในหน้าต่างแชตที่เปิดขึ้น กด Ctrl+V แล้วกด Enter</span>
+                    <span>✅ คัดลอกคำสั่งแล้ว — กด Ctrl+V ในช่องแชต แล้วกด Enter</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
@@ -488,7 +488,7 @@ export default function TeacherAiAssistant() {
                     <span className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs shrink-0">
                       <i className="fa-solid fa-check" />
                     </span>
-                    <span>✅ คัดลอกคำสั่งแล้ว — ในหน้าต่างแชตที่เปิดขึ้น กด Ctrl+V แล้วกด Enter</span>
+                    <span>✅ คัดลอกคำสั่งแล้ว — กด Ctrl+V ในช่องแชต แล้วกด Enter</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
@@ -529,7 +529,7 @@ export default function TeacherAiAssistant() {
         {/* =================================================================== */}
         {activeTab === "general-chat" && (
           <div className="space-y-6 animate-fade-in-up">
-            {/* ตารางการ์ด 4 ใบสำหรับ Agent ทั้ง 4 ด้าน */}
+            {/* ตารางการ์ด 4 ใบสำหรับ Agent ทั้ง 4 ด้าน (pa, docs, read, plan) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {GENERAL_AGENTS.map((agent) => (
                 <div
@@ -544,7 +544,7 @@ export default function TeacherAiAssistant() {
                       <div>
                         <h3 className="font-bold text-foreground text-sm sm:text-base leading-tight">{agent.name}</h3>
                         <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-mono">
-                          Agent: {agent.key}
+                          AGENT: {agent.key.toUpperCase()}
                         </span>
                       </div>
                     </div>
@@ -555,7 +555,7 @@ export default function TeacherAiAssistant() {
                     <button
                       type="button"
                       onClick={() => openAgent(agent.key)}
-                      className="w-full py-2 px-3 rounded-xl border-1.5 border-[#1e7a4f] text-[#1e7a4f] hover:bg-[#1e7a4f] hover:text-white font-semibold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-2xs"
+                      className="w-full py-2 px-3 rounded-xl border border-[#1e7a4f] text-[#1e7a4f] hover:bg-[#1e7a4f] hover:text-white font-semibold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
                     >
                       <i className="fa-solid fa-arrow-up-right-from-square text-xs" />
                       <span>เปิดแชต</span>
@@ -565,7 +565,7 @@ export default function TeacherAiAssistant() {
               ))}
             </div>
 
-            {/* ช่องพิมพ์คำถามเองพร้อม Dropdown เลือก Agent */}
+            {/* ช่องพิมพ์คำถามเองพร้อม Dropdown เลือก Agent (plan, pa, docs, read) */}
             <div className="glass-panel rounded-3xl p-6 sm:p-7">
               <div className="flex items-center gap-2.5 mb-4 pb-2 border-b border-border/40">
                 <i className="fa-solid fa-comments text-[#1e7a4f] text-base" />
@@ -581,11 +581,10 @@ export default function TeacherAiAssistant() {
                       onChange={(e) => setSelectedChatAgent(e.target.value as AgentKey)}
                       className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-[#1e7a4f]"
                     >
+                      <option value="plan">แผนการสอน (plan)</option>
                       <option value="pa">ธุรการและวิทยฐานะครู (pa)</option>
                       <option value="docs">เอกสารราชการ/ใบลา (docs)</option>
                       <option value="read">อ่านและสรุปหนังสือ (read)</option>
-                      <option value="parent">ปรึกษาผู้ปกครอง (parent)</option>
-                      <option value="plan">แผนการสอน (plan)</option>
                     </select>
                   </div>
 
@@ -620,7 +619,7 @@ export default function TeacherAiAssistant() {
                     <span className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs shrink-0">
                       <i className="fa-solid fa-check" />
                     </span>
-                    <span>✅ คัดลอกคำสั่งแล้ว — ในหน้าต่างแชตที่เปิดขึ้น กด Ctrl+V แล้วกด Enter</span>
+                    <span>✅ คัดลอกคำสั่งแล้ว — กด Ctrl+V ในช่องแชต แล้วกด Enter</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <button

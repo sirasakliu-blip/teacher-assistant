@@ -2,18 +2,18 @@
  * ai-assistant.js
  * ระบบเชื่อมต่อ AI Agent ของ LangMind ผ่านลิงก์แชตสาธารณะ (Public Chat)
  * สำหรับระบบ EduConnect360 (ไม่ใช้ API / ไม่ใช้ iframe)
+ * มี 4 Agent หลักสำหรับคุณครูบนเว็บ (plan, pa, docs, read)
  */
 
 (function (global) {
   "use strict";
 
-  // ลิงก์แชตสาธารณะของ LangMind AI Agent ทั้ง 5 ด้าน
+  // ลิงก์แชตสาธารณะของ LangMind AI Agent บนเว็บทั้ง 4 ด้าน
   const AGENT_LINKS = {
     plan: "https://langmind.in.th/public/agents/8cf30138-5ec2-4ea2-93ce-2d13b9f688df/chat",
     pa: "https://langmind.in.th/public/agents/24dbc471-50f6-4f16-903c-4b308caf5324/chat",
     docs: "https://langmind.in.th/public/agents/6ad34cd6-4679-4cd2-8621-190f42b1eb27/chat",
     read: "https://langmind.in.th/public/agents/0104e3b5-bf8b-4415-b1b0-4be7db3e249c/chat",
-    parent: "https://langmind.in.th/public/agents/9c20dbb2-3577-4bb4-845a-8531a1270830/chat",
   };
 
   /**
@@ -59,7 +59,7 @@
    * เปิดหน้าต่างแชต LangMind Agent
    * บนหน้าจอคอมพิวเตอร์: เปิดเป็นหน้าต่าง Popup ด้านขวา กว้าง 460px สูงเกือบเต็มจอ
    * บนมือถือหรือเมื่อ Popup ถูกบล็อก: เปิดในแท็บใหม่ด้วย noopener
-   * @param {string} key - คีย์ของ Agent ('plan', 'pa', 'docs', 'read', 'parent')
+   * @param {string} key - คีย์ของ Agent ('plan', 'pa', 'docs', 'read')
    * @param {string} [promptText] - ข้อความคำสั่ง (ถ้ามี จะถูกคัดลอกลงคลิปบอร์ดอัตโนมัติก่อนเปิด)
    */
   async function openAgent(key, promptText) {

@@ -2,16 +2,16 @@
  * ai-assistant.ts
  * โมดูลเชื่อมต่อ AI Agent ของ LangMind ผ่านลิงก์แชตสาธารณะ (Public Chat)
  * สำหรับระบบ EduConnect360 (ไม่ใช้ API / ไม่ใช้ iframe)
+ * มี 4 Agent หลักสำหรับคุณครู (plan, pa, docs, read)
  */
 
-export type AgentKey = "plan" | "pa" | "docs" | "read" | "parent";
+export type AgentKey = "plan" | "pa" | "docs" | "read";
 
 export const AGENT_LINKS: Record<AgentKey, string> = {
   plan: "https://langmind.in.th/public/agents/8cf30138-5ec2-4ea2-93ce-2d13b9f688df/chat",
   pa: "https://langmind.in.th/public/agents/24dbc471-50f6-4f16-903c-4b308caf5324/chat",
   docs: "https://langmind.in.th/public/agents/6ad34cd6-4679-4cd2-8621-190f42b1eb27/chat",
   read: "https://langmind.in.th/public/agents/0104e3b5-bf8b-4415-b1b0-4be7db3e249c/chat",
-  parent: "https://langmind.in.th/public/agents/9c20dbb2-3577-4bb4-845a-8531a1270830/chat",
 };
 
 /**
