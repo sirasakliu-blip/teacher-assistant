@@ -14,6 +14,26 @@ export default function Login() {
   const [submitting, setSubmitting] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
+  // Auto-detect when popup is closed/cancelled by monitoring window focus
+  useEffect(() => {
+    if (!googleLoading) return;
+    let timer: ReturnType<typeof setTimeout>;
+
+    const handleFocus = () => {
+      // User returned focus to main window.
+      // Give Firebase 1 second to dispatch auth state if successful; otherwise auto-cancel loading.
+      timer = setTimeout(() => {
+        setGoogleLoading(false);
+      }, 1000);
+    };
+
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      clearTimeout(timer);
+    };
+  }, [googleLoading]);
+
   async function handleGoogleLogin() {
     setGoogleLoading(true);
     try {
@@ -23,11 +43,17 @@ export default function Login() {
         description: "ยินดีต้อนรับเข้าสู่ระบบ",
       });
     } catch (err: any) {
+      // If user closed or cancelled popup, immediately stop loading without showing a disruptive error
+      if (
+        err?.code === "auth/popup-closed-by-user" ||
+        err?.code === "auth/cancelled-popup-request"
+      ) {
+        setGoogleLoading(false);
+        return;
+      }
       console.error("Google sign-in error:", err);
       let errorMsg = "ไม่สามารถลงชื่อเข้าใช้ด้วย Google ได้";
-      if (err?.code === "auth/popup-closed-by-user") {
-        errorMsg = "หน้าต่างเข้าสู่ระบบถูกปิดก่อนทำรายการสำเร็จ";
-      } else if (err?.code === "auth/operation-not-allowed") {
+      if (err?.code === "auth/operation-not-allowed") {
         errorMsg = "ยังไม่ได้เปิดใช้งาน Google Provider ใน Firebase Console (Authentication > Sign-in method > Google)";
       } else if (err?.code === "auth/unauthorized-domain") {
         errorMsg = `โดเมน ${window.location.hostname} ยังไม่ได้รับอนุญาตใน Firebase ให้เพิ่มใน Authentication > Settings > Authorized domains`;
@@ -211,11 +237,25 @@ export default function Login() {
                   <button
                     type="button"
                     onClick={handleGoogleLogin}
-                    disabled={googleLoading || submitting}
-                    className="w-full py-3 px-4 rounded-xl border border-border bg-white hover:bg-slate-50 dark:bg-card dark:hover:bg-accent text-slate-800 dark:text-foreground font-semibold text-sm transition-all duration-200 shadow-sm flex items-center justify-center gap-3 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-60 cursor-pointer"
+                    disabled={submitting}
+                    className="w-full py-3 px-4 rounded-xl border border-border bg-white hover:bg-slate-50 dark:bg-card dark:hover:bg-accent text-slate-800 dark:text-foreground font-semibold text-sm transition-all duration-200 shadow-sm flex items-center justify-center gap-3 hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
                   >
                     {googleLoading ? (
-                      <i className="fa-solid fa-circle-notch fa-spin text-primary" />
+                      <div className="flex items-center justify-between w-full">
+                        <div className="flex items-center gap-2.5 text-primary">
+                          <i className="fa-solid fa-circle-notch fa-spin text-sm" />
+                          <span className="text-xs sm:text-sm font-medium">กำลังเปิดหน้าต่าง Google...</span>
+                        </div>
+                        <span
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setGoogleLoading(false);
+                          }}
+                          className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-950/50 dark:text-red-300 border border-red-200 dark:border-red-800 transition cursor-pointer"
+                        >
+                          ยกเลิก
+                        </span>
+                      </div>
                     ) : (
                       <>
                         <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">

@@ -68,6 +68,26 @@ export default function Register() {
     }
   }
 
+  // Auto-detect when popup is closed/cancelled by monitoring window focus
+  useEffect(() => {
+    if (!selectingGoogle) return;
+    let timer: ReturnType<typeof setTimeout>;
+
+    const handleFocus = () => {
+      // User returned focus to main window.
+      // Give Firebase 1 second to dispatch auth state if successful; otherwise auto-cancel loading.
+      timer = setTimeout(() => {
+        setSelectingGoogle(false);
+      }, 1000);
+    };
+
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      clearTimeout(timer);
+    };
+  }, [selectingGoogle]);
+
   // Handle Google account selection
   async function handleSelectGoogle() {
     setSelectingGoogle(true);
@@ -85,11 +105,16 @@ export default function Register() {
         description: `อีเมล: ${user.email} (กรุณากำหนดรหัสผ่านด้านล่างเพื่อใช้ล็อกอินด้วยอีเมล)`,
       });
     } catch (err: any) {
+      if (
+        err?.code === "auth/popup-closed-by-user" ||
+        err?.code === "auth/cancelled-popup-request"
+      ) {
+        setSelectingGoogle(false);
+        return;
+      }
       console.error("Google selection error:", err);
       let errorMsg = "ไม่สามารถเชื่อมต่อบัญชี Google ได้";
-      if (err?.code === "auth/popup-closed-by-user") {
-        errorMsg = "หน้าต่างเลือกบัญชีถูกปิดก่อนทำรายการสำเร็จ";
-      } else if (err?.code === "auth/operation-not-allowed") {
+      if (err?.code === "auth/operation-not-allowed") {
         errorMsg = "ยังไม่ได้เปิดใช้งาน Google Provider ใน Firebase Console";
       } else if (err?.code === "auth/unauthorized-domain") {
         errorMsg = `โดเมน ${window.location.hostname} ยังไม่ได้รับอนุญาตใน Firebase ให้เพิ่มใน Authentication > Settings > Authorized domains`;
@@ -396,14 +421,24 @@ export default function Register() {
                 <button
                   type="button"
                   onClick={handleSelectGoogle}
-                  disabled={selectingGoogle}
-                  className="w-full py-3 px-4 rounded-xl border border-border bg-white hover:bg-slate-50 dark:bg-card dark:hover:bg-accent text-slate-800 dark:text-foreground font-semibold text-xs sm:text-sm transition-all duration-200 shadow-sm flex items-center justify-center gap-3 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-60 cursor-pointer"
+                  className="w-full py-3 px-4 rounded-xl border border-border bg-white hover:bg-slate-50 dark:bg-card dark:hover:bg-accent text-slate-800 dark:text-foreground font-semibold text-xs sm:text-sm transition-all duration-200 shadow-sm flex items-center justify-center gap-3 hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
                 >
                   {selectingGoogle ? (
-                    <>
-                      <i className="fa-solid fa-circle-notch fa-spin text-primary" />
-                      <span>กำลังเปิดหน้าต่าง Google...</span>
-                    </>
+                    <div className="flex items-center justify-between w-full">
+                      <div className="flex items-center gap-2.5 text-primary">
+                        <i className="fa-solid fa-circle-notch fa-spin text-sm" />
+                        <span className="text-xs sm:text-sm font-medium">กำลังเปิดหน้าต่าง Google...</span>
+                      </div>
+                      <span
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectingGoogle(false);
+                        }}
+                        className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-950/50 dark:text-red-300 border border-red-200 dark:border-red-800 transition cursor-pointer"
+                      >
+                        ยกเลิก
+                      </span>
+                    </div>
                   ) : (
                     <>
                       <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
