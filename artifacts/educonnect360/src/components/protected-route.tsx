@@ -17,7 +17,7 @@ export function ProtectedRoute({
       <div className="min-h-[100dvh] w-full bg-background flex items-center justify-center">
         <div className="flex items-center gap-3 text-muted-foreground">
           <i className="fa-solid fa-circle-notch fa-spin text-primary text-xl" />
-          <span className="font-medium">Loading...</span>
+          <span className="font-medium">กำลังโหลด...</span>
         </div>
       </div>
     );
@@ -27,9 +27,19 @@ export function ProtectedRoute({
     return <Redirect to="/login" />;
   }
 
-  if (profile.role !== role) {
+  // If role is admin and email is not verified, redirect to verify email page
+  if (profile.role === "admin" && !firebaseUser.emailVerified) {
+    return <Redirect to="/admin-verify-email" />;
+  }
+
+  // Allow admin to view teacher pages if needed, but otherwise enforce strict role check
+  const hasAccess = profile.role === role || (role === "teacher" && profile.role === "admin");
+
+  if (!hasAccess) {
     const dest =
-      profile.role === "teacher"
+      profile.role === "admin"
+        ? "/admin"
+        : profile.role === "teacher"
         ? "/teacher"
         : profile.role === "parent"
         ? "/parent"

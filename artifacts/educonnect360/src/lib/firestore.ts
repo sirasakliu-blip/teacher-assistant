@@ -24,12 +24,14 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import type {
+  AdminWhitelist,
   Assignment,
   Attendance,
   Class,
   ClassCover,
   ClassSession,
   LeaveRequest,
+  ParentViewToken,
   StudentRiskEntry,
   Submission,
   TeacherInvite,
@@ -1073,4 +1075,261 @@ export async function updateUserRole(uid: string, role: UserRole): Promise<void>
     role,
     updatedAt: serverTimestamp(),
   });
+}
+
+/* ------------------------------------------------------------------ */
+/* Parent View Magic Link (Token-based, No Auth Required)              */
+/* ------------------------------------------------------------------ */
+
+export function generateParentViewToken(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+  let token = "";
+  for (let i = 0; i < 24; i++) {
+    token += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return token;
+}
+
+export async function createParentViewTokenDoc(
+  studentUid: string,
+  studentId: string,
+  studentName: string,
+): Promise<string> {
+  const database = requireDb();
+  const token = generateParentViewToken();
+  const ref = doc(database, "parent_view_tokens", token);
+  await setDoc(ref, {
+    token,
+    studentUid,
+    studentId,
+    studentName,
+    isActive: true,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  // Also link to the user record
+  await updateDoc(doc(database, "users", studentUid), {
+    parentViewToken: token,
+    updatedAt: serverTimestamp(),
+  });
+  return token;
+}
+
+export async function resetParentViewToken(studentUid: string): Promise<string> {
+  const database = requireDb();
+  // Deactivate existing active tokens for this student
+  const snaps = await getDocs(
+    query(
+      collection(database, "parent_view_tokens"),
+      where("studentUid", "==", studentUid),
+      where("isActive", "==", true),
+    ),
+  );
+  for (const d of snaps.docs) {
+    await updateDoc(d.ref, {
+      isActive: false,
+      updatedAt: serverTimestamp(),
+    });
+  }
+
+  // Get student profile
+  const userSnap = await getDoc(doc(database, "users", studentUid));
+  const userData = userSnap.data();
+  const studentId = userData?.studentId || "";
+  const studentName = userData?.displayName || userData?.fullName || "นักเรียน";
+
+  // Create new 24-character token
+  const newToken = await createParentViewTokenDoc(studentUid, studentId, studentName);
+  return newToken;
+}
+
+export async function getParentViewToken(token: string): Promise<ParentViewToken | null> {
+  const database = requireDb();
+  const snap = await getDoc(doc(database, "parent_view_tokens", token.trim()));
+  if (!snap.exists()) return null;
+  const data = snap.data();
+  return {
+    id: snap.id,
+    token: data.token || snap.id,
+    studentUid: data.studentUid,
+    studentId: data.studentId,
+    studentName: data.studentName,
+    isActive: !!data.isActive,
+    createdAt: tsToISO(data.createdAt),
+    updatedAt: tsToISO(data.updatedAt),
+  };
+}
+
+export async function getParentViewData(token: string) {
+  const tokenData = await getParentViewToken(token);
+  if (!tokenData || !tokenData.isActive) return null;
+
+  const database = requireDb();
+  const studentSnap = await getDoc(doc(database, "users", tokenData.studentUid));
+  if (!studentSnap.exists()) return null;
+  const studentData = studentSnap.data();
+
+  const studentUser: User = {
+    id: studentSnap.id,
+    uid: studentData.uid,
+    email: studentData.email,
+    displayName: studentData.displayName,
+    fullName: studentData.fullName || studentData.displayName,
+    studentId: studentData.studentId,
+    parentViewToken: studentData.parentViewToken,
+    role: studentData.role,
+    linkedStudentIds: (studentData.linkedStudentIds as string[]) ?? [],
+    createdAt: tsToISO(studentData.createdAt),
+    updatedAt: tsToISO(studentData.updatedAt),
+  };
+
+  const [classes, attendanceRecords, leaveRequests] = await Promise.all([
+    getClassesForStudent(studentUser.id),
+    getAttendanceForStudent(studentUser.id),
+    getLeaveRequestsForStudent(studentUser.id),
+  ]);
+
+  const totalSessions = attendanceRecords.length;
+  const presentCount = attendanceRecords.filter((a) => a.status === "present").length;
+  const lateCount = attendanceRecords.filter((a) => a.status === "late").length;
+  const absentCount = attendanceRecords.filter((a) => a.status === "absent").length;
+  const excusedCount = attendanceRecords.filter((a) => a.status === "excused").length;
+
+  const rate = totalSessions > 0 ? Math.round(((presentCount + lateCount) / totalSessions) * 100) : 100;
+
+  return {
+    tokenData,
+    student: studentUser,
+    classes,
+    attendanceRecords,
+    leaveRequests,
+    stats: {
+      attendanceRate: rate,
+      totalSessions,
+      present: presentCount,
+      late: lateCount,
+      absent: absentCount,
+      excused: excusedCount,
+    },
+  };
+}
+
+export async function getAllParentViewTokens(): Promise<ParentViewToken[]> {
+  const database = requireDb();
+  const snaps = await getDocs(collection(database, "parent_view_tokens"));
+  return snaps.docs
+    .map((snap) => {
+      const data = snap.data();
+      return {
+        id: snap.id,
+        token: data.token || snap.id,
+        studentUid: data.studentUid,
+        studentId: data.studentId,
+        studentName: data.studentName,
+        isActive: !!data.isActive,
+        createdAt: tsToISO(data.createdAt),
+        updatedAt: tsToISO(data.updatedAt),
+      };
+    })
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export async function toggleParentTokenStatus(token: string, isActive: boolean): Promise<void> {
+  const database = requireDb();
+  await updateDoc(doc(database, "parent_view_tokens", token.trim()), {
+    isActive,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Admin Whitelist Management                                          */
+/* ------------------------------------------------------------------ */
+
+export async function checkAdminWhitelist(email: string): Promise<boolean> {
+  const database = requireDb();
+  const cleanEmail = email.trim().toLowerCase();
+  const snap = await getDoc(doc(database, "admin_whitelist", cleanEmail));
+  if (!snap.exists()) return false;
+  return snap.data()?.isApproved === true;
+}
+
+export async function addAdminToWhitelist(
+  email: string,
+  note?: string,
+  addedBy?: { uid: string; name: string },
+): Promise<void> {
+  const database = requireDb();
+  const cleanEmail = email.trim().toLowerCase();
+  if (!cleanEmail.endsWith(".ac.th")) {
+    throw new Error("อีเมลผู้ดูแลระบบต้องลงท้ายด้วย .ac.th เท่านั้น");
+  }
+  const ref = doc(database, "admin_whitelist", cleanEmail);
+  await setDoc(ref, {
+    email: cleanEmail,
+    isApproved: true,
+    note: note?.trim() || "",
+    addedByUid: addedBy?.uid || null,
+    addedByName: addedBy?.name || null,
+    createdAt: serverTimestamp(),
+  });
+}
+
+export async function getAllAdminWhitelist(): Promise<AdminWhitelist[]> {
+  const database = requireDb();
+  const snaps = await getDocs(collection(database, "admin_whitelist"));
+  return snaps.docs
+    .map((snap) => {
+      const data = snap.data();
+      return {
+        id: snap.id,
+        email: data.email || snap.id,
+        isApproved: !!data.isApproved,
+        note: data.note || "",
+        addedByUid: data.addedByUid || "",
+        addedByName: data.addedByName || "",
+        createdAt: tsToISO(data.createdAt),
+      };
+    })
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export async function deleteAdminFromWhitelist(email: string): Promise<void> {
+  const database = requireDb();
+  const cleanEmail = email.trim().toLowerCase();
+  await deleteDoc(doc(database, "admin_whitelist", cleanEmail));
+}
+
+/* ------------------------------------------------------------------ */
+/* User Management for Admin                                          */
+/* ------------------------------------------------------------------ */
+
+export async function getAllUsers(): Promise<User[]> {
+  const database = requireDb();
+  const snaps = await getDocs(collection(database, "users"));
+  return snaps.docs
+    .map((snap) => {
+      const data = snap.data();
+      return {
+        id: snap.id,
+        uid: data.uid || snap.id,
+        email: data.email || "",
+        displayName: data.displayName || "",
+        fullName: data.fullName || data.displayName || "",
+        photoURL: data.photoURL ?? null,
+        role: data.role,
+        studentId: data.studentId,
+        parentViewToken: data.parentViewToken,
+        inviteCodeUsed: data.inviteCodeUsed,
+        linkedStudentIds: (data.linkedStudentIds as string[]) ?? [],
+        createdAt: tsToISO(data.createdAt),
+        updatedAt: tsToISO(data.updatedAt),
+      };
+    })
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export async function deleteUserFromSystem(uid: string): Promise<void> {
+  const database = requireDb();
+  await deleteDoc(doc(database, "users", uid));
 }

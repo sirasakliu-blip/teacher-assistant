@@ -2,43 +2,119 @@ import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import type { TeacherInvite } from "@/types";
+import type { TeacherInvite, AdminWhitelist, User, ParentViewToken } from "@/types";
 import {
   createTeacherInvite,
   deleteTeacherInvite,
   subscribeTeacherInvites,
-  updateUserRole,
+  getAllAdminWhitelist,
+  addAdminToWhitelist,
+  deleteAdminFromWhitelist,
+  getAllUsers,
+  deleteUserFromSystem,
+  getAllParentViewTokens,
+  toggleParentTokenStatus,
+  resetParentViewToken,
 } from "@/lib/firestore";
 
 export default function AdminDashboard() {
-  const { profile } = useAuth();
+  const { profile, firebaseUser } = useAuth();
   const { toast } = useToast();
+
+  const [activeTab, setActiveTab] = useState<"invites" | "whitelist" | "users">("invites");
+
+  // Tab 1: Teacher Invites state
   const [invites, setInvites] = useState<TeacherInvite[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingInvites, setLoadingInvites] = useState(true);
   const [note, setNote] = useState("");
-  const [creating, setCreating] = useState(false);
+  const [creatingInvite, setCreatingInvite] = useState(false);
   const [latestCode, setLatestCode] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [filterStatus, setFilterStatus] = useState<"all" | "unused" | "used">("all");
+  const [inviteSearch, setInviteSearch] = useState("");
+  const [inviteFilter, setInviteFilter] = useState<"all" | "unused" | "used">("all");
   const [deletingCode, setDeletingCode] = useState<string | null>(null);
 
+  // Tab 2: Admin Whitelist state
+  const [whitelist, setWhitelist] = useState<AdminWhitelist[]>([]);
+  const [loadingWhitelist, setLoadingWhitelist] = useState(false);
+  const [newAdminEmail, setNewAdminEmail] = useState("");
+  const [newAdminNote, setNewAdminNote] = useState("");
+  const [addingAdmin, setAddingAdmin] = useState(false);
+  const [deletingAdminEmail, setDeletingAdminEmail] = useState<string | null>(null);
+
+  // Tab 3: Users & Parent Tokens state
+  const [users, setUsers] = useState<User[]>([]);
+  const [parentTokens, setParentTokens] = useState<ParentViewToken[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [userSearch, setUserSearch] = useState("");
+  const [userRoleFilter, setUserRoleFilter] = useState<"all" | "student" | "teacher" | "admin">("all");
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+  const [togglingToken, setTogglingToken] = useState<string | null>(null);
+  const [resettingTokenForStudent, setResettingTokenForStudent] = useState<string | null>(null);
+
+  // Subscribe to Teacher Invites
   useEffect(() => {
     const unsubscribe = subscribeTeacherInvites((list) => {
       setInvites(list);
-      setLoading(false);
+      setLoadingInvites(false);
     });
     return () => unsubscribe();
   }, []);
 
-  async function handleCreate(e: React.FormEvent) {
+  // Fetch Whitelist when switching to tab
+  useEffect(() => {
+    if (activeTab === "whitelist") {
+      loadWhitelist();
+    } else if (activeTab === "users") {
+      loadUsersAndTokens();
+    }
+  }, [activeTab]);
+
+  async function loadWhitelist() {
+    setLoadingWhitelist(true);
+    try {
+      const list = await getAllAdminWhitelist();
+      setWhitelist(list);
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "โหลดรายชื่อแอดมินไม่สำเร็จ",
+        description: err instanceof Error ? err.message : "กรุณาลองใหม่อีกครั้ง",
+      });
+    } finally {
+      setLoadingWhitelist(false);
+    }
+  }
+
+  async function loadUsersAndTokens() {
+    setLoadingUsers(true);
+    try {
+      const [userList, tokenList] = await Promise.all([
+        getAllUsers(),
+        getAllParentViewTokens(),
+      ]);
+      setUsers(userList);
+      setParentTokens(tokenList);
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "โหลดข้อมูลผู้ใช้ไม่สำเร็จ",
+        description: err instanceof Error ? err.message : "กรุณาลองใหม่อีกครั้ง",
+      });
+    } finally {
+      setLoadingUsers(false);
+    }
+  }
+
+  /* ---------------- Tab 1: Teacher Invites Handlers ---------------- */
+  async function handleCreateInvite(e: React.FormEvent) {
     e.preventDefault();
-    setCreating(true);
+    setCreatingInvite(true);
     try {
       const newInvite = await createTeacherInvite({
         note: note.trim() || undefined,
         createdByUid: profile?.uid,
-        createdByName: profile?.displayName,
+        createdByName: profile?.displayName || profile?.fullName,
       });
       setLatestCode(newInvite.code);
       setNote("");
@@ -53,7 +129,7 @@ export default function AdminDashboard() {
         description: err instanceof Error ? err.message : "กรุณาลองใหม่อีกครั้ง",
       });
     } finally {
-      setCreating(false);
+      setCreatingInvite(false);
     }
   }
 
@@ -63,28 +139,27 @@ export default function AdminDashboard() {
       setCopiedCode(code);
       toast({
         title: "คัดลอกรหัสแล้ว",
-        description: `คัดลอก ${code} ไปยังคลิปบอร์ดแล้ว`,
+        description: `คัดลอกรหัส ${code} ไปยังคลิปบอร์ดแล้ว`,
       });
       setTimeout(() => setCopiedCode(null), 2500);
     } catch {
       toast({
         variant: "destructive",
-        title: "ไม่สามารถคัดลอกได้",
-        description: "กรุณาคัดลอกรหัสด้วยตนเอง",
+        title: "คัดลอกไม่สำเร็จ",
+        description: "กรุณาคัดลอกด้วยตนเอง",
       });
     }
   }
 
-  async function handleDelete(code: string) {
-    if (!confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบรหัส ${code} นี้?`)) return;
+  async function handleDeleteInvite(code: string) {
+    if (!confirm(`คุณต้องการลบรหัส ${code} ใช่หรือไม่?`)) return;
     setDeletingCode(code);
     try {
       await deleteTeacherInvite(code);
       toast({
-        title: "ลบรหัสสำเร็จ",
-        description: `รหัส ${code} ถูกลบออกจากระบบแล้ว`,
+        title: "ลบรหัสเชิญแล้ว",
+        description: `ลบรหัส ${code} สำเร็จ`,
       });
-      if (latestCode === code) setLatestCode(null);
     } catch (err) {
       toast({
         variant: "destructive",
@@ -96,414 +171,766 @@ export default function AdminDashboard() {
     }
   }
 
-  async function handleMakeMeAdmin() {
-    if (!profile?.uid) return;
-    try {
-      await updateUserRole(profile.uid, "admin");
+  /* ---------------- Tab 2: Admin Whitelist Handlers ---------------- */
+  async function handleAddAdmin(e: React.FormEvent) {
+    e.preventDefault();
+    const cleanEmail = newAdminEmail.trim().toLowerCase();
+    if (!cleanEmail.endsWith(".ac.th")) {
       toast({
-        title: "ปรับสิทธิ์สำเร็จ",
-        description: "บัญชีของคุณได้รับการตั้งค่าเป็น ผู้ดูแลระบบ (Admin) แล้ว",
+        variant: "destructive",
+        title: "รูปแบบอีเมลไม่ถูกต้อง",
+        description: "อีเมลผู้ดูแลระบบต้องลงท้ายด้วย .ac.th เท่านั้น",
       });
-      window.location.reload();
+      return;
+    }
+
+    setAddingAdmin(true);
+    try {
+      await addAdminToWhitelist(cleanEmail, newAdminNote, {
+        uid: profile?.uid || "",
+        name: profile?.displayName || profile?.fullName || "Admin",
+      });
+      setNewAdminEmail("");
+      setNewAdminNote("");
+      toast({
+        title: "อนุมัติสิทธิ์แอดมินสำเร็จ",
+        description: `เพิ่ม ${cleanEmail} เข้าสู่ระบบเรียบร้อย สามารถลงทะเบียนได้ทันที`,
+      });
+      loadWhitelist();
     } catch (err) {
       toast({
         variant: "destructive",
-        title: "ปรับสิทธิ์ไม่สำเร็จ",
-        description: err instanceof Error ? err.message : "เกิดข้อผิดพลาด",
+        title: "เพิ่มแอดมินไม่สำเร็จ",
+        description: err instanceof Error ? err.message : "กรุณาลองใหม่อีกครั้ง",
+      });
+    } finally {
+      setAddingAdmin(false);
+    }
+  }
+
+  async function handleDeleteAdmin(email: string) {
+    if (!confirm(`ต้องการยกเลิกสิทธิ์แอดมินของ ${email} ใช่หรือไม่?`)) return;
+    setDeletingAdminEmail(email);
+    try {
+      await deleteAdminFromWhitelist(email);
+      toast({
+        title: "ยกเลิกสิทธิ์สำเร็จ",
+        description: `ลบ ${email} ออกจากสิทธิ์แอดมินแล้ว`,
+      });
+      loadWhitelist();
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "ยกเลิกสิทธิ์ไม่สำเร็จ",
+        description: err instanceof Error ? err.message : "กรุณาลองใหม่อีกครั้ง",
+      });
+    } finally {
+      setDeletingAdminEmail(null);
+    }
+  }
+
+  /* ---------------- Tab 3: Users & Parent Tokens Handlers ---------------- */
+  async function handleDeleteUser(userId: string, userName: string) {
+    if (!confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบผู้ใช้ "${userName}" ออกจากระบบ?`)) return;
+    setDeletingUserId(userId);
+    try {
+      await deleteUserFromSystem(userId);
+      toast({
+        title: "ลบผู้ใช้สำเร็จ",
+        description: `ลบ "${userName}" ออกจากฐานข้อมูลแล้ว`,
+      });
+      setUsers((prev) => prev.filter((u) => u.id !== userId));
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "ลบผู้ใช้ไม่สำเร็จ",
+        description: err instanceof Error ? err.message : "กรุณาลองใหม่อีกครั้ง",
+      });
+    } finally {
+      setDeletingUserId(null);
+    }
+  }
+
+  async function handleToggleToken(token: string, currentStatus: boolean) {
+    setTogglingToken(token);
+    try {
+      await toggleParentTokenStatus(token, !currentStatus);
+      setParentTokens((prev) =>
+        prev.map((t) => (t.token === token ? { ...t, isActive: !currentStatus } : t))
+      );
+      toast({
+        title: "เปลี่ยนสถานะโทเค็นแล้ว",
+        description: !currentStatus ? "เปิดใช้งานลิงก์ผู้ปกครองแล้ว" : "ปิดการเข้าถึงผ่านลิงก์แล้ว",
+      });
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "เปลี่ยนสถานะไม่สำเร็จ",
+        description: err instanceof Error ? err.message : "กรุณาลองใหม่อีกครั้ง",
+      });
+    } finally {
+      setTogglingToken(null);
+    }
+  }
+
+  async function handleResetToken(studentUid: string, studentName: string) {
+    if (!confirm(`คุณต้องการรีเซ็ตและสร้างลิงก์ผู้ปกครองใหม่สำหรับ "${studentName}" หรือไม่? ลิงก์เดิมจะไม่สามารถใช้งานได้อีก`)) return;
+    setResettingTokenForStudent(studentUid);
+    try {
+      const newToken = await resetParentViewToken(studentUid);
+      toast({
+        title: "รีเซ็ตลิงก์สำเร็จ",
+        description: `สร้างลิงก์ผู้ปกครองใหม่เรียบร้อย (${newToken.slice(0, 8)}...)`,
+      });
+      await loadUsersAndTokens();
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "รีเซ็ตลิงก์ไม่สำเร็จ",
+        description: err instanceof Error ? err.message : "กรุณาลองใหม่อีกครั้ง",
+      });
+    } finally {
+      setResettingTokenForStudent(null);
+    }
+  }
+
+  async function handleCopyParentLink(token: string) {
+    const url = `${window.location.origin}/parent-view?token=${token}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast({
+        title: "คัดลอกลิงก์ผู้ปกครองแล้ว",
+        description: url,
+      });
+    } catch {
+      toast({
+        variant: "destructive",
+        title: "คัดลอกไม่สำเร็จ",
+        description: "กรุณาคัดลอกด้วยตนเอง",
       });
     }
   }
 
+  // Filtered lists
   const filteredInvites = invites.filter((inv) => {
     const matchesSearch =
-      inv.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (inv.note && inv.note.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (inv.usedByName && inv.usedByName.toLowerCase().includes(searchTerm.toLowerCase()));
+      inv.code.toLowerCase().includes(inviteSearch.toLowerCase()) ||
+      (inv.note && inv.note.toLowerCase().includes(inviteSearch.toLowerCase())) ||
+      (inv.usedByName && inv.usedByName.toLowerCase().includes(inviteSearch.toLowerCase()));
+    if (!matchesSearch) return false;
+    if (inviteFilter === "unused") return !inv.isUsed;
+    if (inviteFilter === "used") return inv.isUsed;
+    return true;
+  });
 
-    if (filterStatus === "unused") return matchesSearch && !inv.isUsed;
-    if (filterStatus === "used") return matchesSearch && inv.isUsed;
-    return matchesSearch;
+  const filteredUsers = users.filter((u) => {
+    const nameMatch = (u.fullName || u.displayName || "").toLowerCase().includes(userSearch.toLowerCase());
+    const emailMatch = (u.email || "").toLowerCase().includes(userSearch.toLowerCase());
+    const studentIdMatch = (u.studentId || "").toLowerCase().includes(userSearch.toLowerCase());
+    const matchesSearch = nameMatch || emailMatch || studentIdMatch;
+
+    if (!matchesSearch) return false;
+    if (userRoleFilter === "all") return true;
+    return u.role === userRoleFilter;
   });
 
   const unusedCount = invites.filter((i) => !i.isUsed).length;
   const usedCount = invites.filter((i) => i.isUsed).length;
 
   return (
-    <div className="min-h-[100dvh] w-full bg-background relative overflow-hidden flex flex-col font-sans">
-      {/* Background ambient lighting */}
-      <div className="absolute top-[-10%] right-[-5%] w-[45%] h-[45%] bg-primary/10 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-[-15%] left-[-10%] w-[50%] h-[50%] bg-emerald-500/5 rounded-full blur-[120px] pointer-events-none" />
-
-      {/* Top Navbar */}
-      <nav className="w-full px-6 md:px-10 py-5 flex items-center justify-between relative z-10 glass-panel border-x-0 border-t-0 rounded-none">
-        <div className="flex items-center gap-4">
-          <Link
-            href="/teacher"
-            className="flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors mr-2"
-          >
-            <i className="fa-solid fa-arrow-left" /> กลับห้องเรียน
-          </Link>
-          <div className="h-4 w-px bg-border" />
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-primary/15 text-primary flex items-center justify-center font-bold">
-              <i className="fa-solid fa-shield-halved" />
+    <div className="min-h-screen bg-slate-50/60 text-slate-800 pb-16">
+      {/* Top Navigation */}
+      <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-slate-200">
+        <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-sm shadow-emerald-500/20">
+              <i className="fa-solid fa-shield-halved text-lg" />
             </div>
             <div>
-              <span className="font-bold text-foreground text-sm tracking-tight block">
-                ระบบจัดการรหัสเชิญครู
-              </span>
-              <span className="text-xs text-muted-foreground">Admin Invite Control</span>
+              <h1 className="font-semibold text-slate-900 leading-tight">Admin Console</h1>
+              <p className="text-xs text-slate-500">ระบบจัดการผู้ดูแลระบบและสิทธิ์การเข้าใช้งาน</p>
             </div>
           </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          {profile?.role !== "admin" && (
-            <button
-              onClick={handleMakeMeAdmin}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/25 transition-all flex items-center gap-1.5"
-              title="คลิกเพื่อให้สิทธิ์แอดมินสำหรับทดสอบระบบ"
+          <div className="flex items-center gap-2">
+            <span className="hidden sm:inline-block px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <i className="fa-solid fa-user-shield mr-1" />
+              {profile?.email || firebaseUser?.email || "Admin"}
+            </span>
+            <Link
+              href="/teacher"
+              className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-xs font-medium text-slate-600 transition"
             >
-              <i className="fa-solid fa-user-gear" /> ตั้งฉันเป็น Admin (Setup)
-            </button>
-          )}
-          <span className="text-xs font-medium text-muted-foreground hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg glass-panel">
-            <i className="fa-solid fa-user-circle text-primary" /> {profile?.displayName} ({profile?.role})
-          </span>
+              <i className="fa-solid fa-arrow-left mr-1" /> หน้าครู
+            </Link>
+          </div>
         </div>
-      </nav>
+      </header>
 
-      <main className="flex-1 p-6 md:p-10 max-w-7xl mx-auto w-full relative z-10 space-y-8">
-        {/* Header Title */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 animate-fade-in-down">
-          <div>
-            <h1 className="text-3xl font-extrabold text-foreground tracking-tight flex items-center gap-3">
-              <span className="w-10 h-10 rounded-2xl bg-primary/10 text-primary flex items-center justify-center text-xl">
-                <i className="fa-solid fa-key" />
+      {/* Main Container */}
+      <main className="max-w-6xl mx-auto px-4 pt-6 space-y-6">
+        {/* Navigation Tabs */}
+        <div className="flex border-b border-slate-200 bg-white rounded-t-xl px-2 pt-2">
+          <button
+            onClick={() => setActiveTab("invites")}
+            className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition ${
+              activeTab === "invites"
+                ? "border-emerald-600 text-emerald-700 font-semibold"
+                : "border-transparent text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            <i className="fa-solid fa-ticket" />
+            <span>รหัสลงทะเบียนครู</span>
+            <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-slate-100 text-slate-600">
+              {invites.length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("whitelist")}
+            className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition ${
+              activeTab === "whitelist"
+                ? "border-emerald-600 text-emerald-700 font-semibold"
+                : "border-transparent text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            <i className="fa-solid fa-user-shield" />
+            <span>จัดการสิทธิ์แอดมิน (.ac.th)</span>
+            {whitelist.length > 0 && (
+              <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-slate-100 text-slate-600">
+                {whitelist.length}
               </span>
-              จัดการรหัสลงทะเบียนบุคลากรครู
-            </h1>
-            <p className="text-muted-foreground text-sm mt-1">
-              สร้างรหัสสุ่มความปลอดภัยสูงสำหรับให้ครูนำไปยืนยันตัวตนตอนสมัครสมาชิก (รหัสใช้งานได้ครั้งเดียว)
-            </p>
-          </div>
+            )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab("users")}
+            className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition ${
+              activeTab === "users"
+                ? "border-emerald-600 text-emerald-700 font-semibold"
+                : "border-transparent text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            <i className="fa-solid fa-users" />
+            <span>จัดการผู้ใช้งานและโทเค็น</span>
+            {users.length > 0 && (
+              <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-slate-100 text-slate-600">
+                {users.length}
+              </span>
+            )}
+          </button>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 animate-fade-in-up">
-          <div className="glass-panel p-6 rounded-2xl border border-white/40 dark:border-white/10 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1">รหัสทั้งหมดในระบบ</p>
-              <h2 className="text-3xl font-extrabold text-foreground">{invites.length}</h2>
-            </div>
-            <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center text-xl">
-              <i className="fa-solid fa-ticket" />
-            </div>
-          </div>
-
-          <div className="glass-panel p-6 rounded-2xl border border-white/40 dark:border-white/10 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400 mb-1 font-semibold">
-                พร้อมใช้งาน (ยังไม่ใช้)
-              </p>
-              <h2 className="text-3xl font-extrabold text-emerald-600 dark:text-emerald-400">
-                {unusedCount}
-              </h2>
-            </div>
-            <div className="w-12 h-12 rounded-xl bg-emerald-500/15 text-emerald-600 flex items-center justify-center text-xl">
-              <i className="fa-solid fa-circle-check" />
-            </div>
-          </div>
-
-          <div className="glass-panel p-6 rounded-2xl border border-white/40 dark:border-white/10 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1">ใช้งานแล้ว</p>
-              <h2 className="text-3xl font-extrabold text-muted-foreground">{usedCount}</h2>
-            </div>
-            <div className="w-12 h-12 rounded-xl bg-muted text-muted-foreground flex items-center justify-center text-xl">
-              <i className="fa-solid fa-user-check" />
-            </div>
-          </div>
-        </div>
-
-        {/* Section 1: Generator Form & Latest Code Callout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in-up">
-          <div className="lg:col-span-2 glass-panel p-6 md:p-8 rounded-3xl border border-white/40 dark:border-white/10">
-            <h3 className="text-lg font-bold text-foreground mb-2 flex items-center gap-2">
-              <i className="fa-solid fa-plus-circle text-primary" /> ออกรหัสเชิญครูใหม่
-            </h3>
-            <p className="text-xs text-muted-foreground mb-6">
-              ระบบจะสุ่มรหัสรูปแบบ <code className="px-1.5 py-0.5 rounded bg-muted font-mono font-bold text-foreground">TCH-XXXX-XX</code> ที่ตัดอักษรที่สับสนออก ป้องกันการอ่านผิด
-            </p>
-
-            <form onSubmit={handleCreate} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-foreground mb-1.5">
-                  ระบุชื่อครู หรือหมายเหตุ (Optional)
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-muted-foreground">
-                    <i className="fa-solid fa-chalkboard-user text-sm" />
-                  </div>
+        {/* TAB 1: TEACHER INVITES */}
+        {activeTab === "invites" && (
+          <div className="space-y-6">
+            {/* Generator Card */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                    <i className="fa-solid fa-plus-circle text-emerald-600" />
+                    สร้างรหัสลงทะเบียนครูใหม่
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-1">
+                    รหัสจะอยู่ในรูปแบบ <code className="text-emerald-700 font-mono bg-emerald-50 px-1 py-0.5 rounded">TCH-XXXX-XX</code> ใช้งานได้เพียง 1 ครั้งต่อ 1 บัญชี
+                  </p>
+                </div>
+                <form onSubmit={handleCreateInvite} className="flex flex-col sm:flex-row gap-2.5 w-full md:w-auto">
                   <input
                     type="text"
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
-                    placeholder="เช่น ครูสมชาย ใจดี (กลุ่มสาระวิทยาศาสตร์)"
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm"
+                    placeholder="บันทึกช่วยจำ (เช่น ครูสมชาย / กลุ่มสาระวิทย์)"
+                    className="px-3.5 py-2 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 min-w-[260px]"
                   />
-                </div>
+                  <button
+                    type="submit"
+                    disabled={creatingInvite}
+                    className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm transition shadow-sm shadow-emerald-600/20 disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {creatingInvite ? (
+                      <>
+                        <i className="fa-solid fa-circle-notch fa-spin text-xs" />
+                        กำลังสร้าง...
+                      </>
+                    ) : (
+                      <>
+                        <i className="fa-solid fa-key" />
+                        สร้างรหัสใหม่
+                      </>
+                    )}
+                  </button>
+                </form>
               </div>
 
-              <button
-                type="submit"
-                disabled={creating}
-                className="px-6 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-all duration-300 shadow-md shadow-primary/20 hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-60 flex items-center gap-2"
-              >
-                {creating ? (
-                  <>
-                    <i className="fa-solid fa-circle-notch fa-spin" /> กำลังสร้างรหัส...
-                  </>
-                ) : (
-                  <>
-                    <i className="fa-solid fa-key" /> สร้างรหัสเชิญครู
-                  </>
-                )}
-              </button>
-            </form>
-          </div>
-
-          {/* Latest Generated Code Quick Card */}
-          <div className="glass-panel p-6 md:p-8 rounded-3xl border border-white/40 dark:border-white/10 flex flex-col justify-between bg-gradient-to-br from-primary/5 via-transparent to-emerald-500/5">
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-xs font-bold tracking-wider uppercase text-primary">
-                  รหัสที่เพิ่งสร้างล่าสุด
-                </span>
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              </div>
-
-              {latestCode ? (
-                <div className="space-y-3">
-                  <div className="p-4 rounded-2xl bg-background/80 border-2 border-primary/40 text-center shadow-inner">
-                    <span className="text-2xl md:text-3xl font-black font-mono tracking-widest text-primary block">
-                      {latestCode}
-                    </span>
-                    <span className="text-[11px] text-muted-foreground mt-1 block">
-                      สถานะ: ยังไม่ถูกใช้งาน
-                    </span>
+              {latestCode && (
+                <div className="mt-4 p-4 rounded-xl bg-emerald-50/70 border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-emerald-600 text-white flex items-center justify-center">
+                      <i className="fa-solid fa-check" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-emerald-800">รหัสล่าสุดที่สร้างสำเร็จ</p>
+                      <p className="text-xl font-bold font-mono tracking-wider text-emerald-950">{latestCode}</p>
+                    </div>
                   </div>
-
                   <button
                     onClick={() => handleCopy(latestCode)}
-                    className="w-full py-2.5 rounded-xl bg-primary/15 text-primary hover:bg-primary/25 font-semibold text-sm transition-all flex items-center justify-center gap-2"
+                    className="px-4 py-2 rounded-lg bg-white border border-emerald-300 text-emerald-700 hover:bg-emerald-100/50 text-xs font-semibold transition flex items-center justify-center gap-2"
                   >
-                    <i className={copiedCode === latestCode ? "fa-solid fa-check" : "fa-solid fa-copy"} />
-                    {copiedCode === latestCode ? "คัดลอกสำเร็จแล้ว!" : "คัดลอกรหัสนี้"}
+                    <i className="fa-solid fa-copy" />
+                    {copiedCode === latestCode ? "คัดลอกแล้ว!" : "คัดลอกรหัส"}
                   </button>
-                </div>
-              ) : (
-                <div className="h-32 flex flex-col items-center justify-center text-center text-muted-foreground">
-                  <i className="fa-solid fa-sparkles text-2xl mb-2 text-primary/40" />
-                  <p className="text-xs">กดปุ่ม "สร้างรหัสเชิญครู" ด้านซ้ายเพื่อรับรหัสใหม่</p>
                 </div>
               )}
             </div>
 
-            <p className="text-[11px] text-muted-foreground/80 mt-4 text-center">
-              * ส่งรหัสนี้ให้คุณครูเพื่อนำไปกรอกในช่อง "รหัสลงทะเบียนบุคลากร" ตอนสมัครสมาชิก
-            </p>
-          </div>
-        </div>
-
-        {/* Section 2: Invites Table */}
-        <div className="glass-panel p-6 md:p-8 rounded-3xl border border-white/40 dark:border-white/10 space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
-                <i className="fa-solid fa-list-check text-primary" /> รายการรหัสเชิญครูทั้งหมด
-              </h3>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                ตรวจสอบสถานะการนำรหัสไปใช้ และประวัติผู้ลงทะเบียน
-              </p>
-            </div>
-
-            {/* Filter and Search */}
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="inline-flex p-1 rounded-xl bg-background/60 border border-border text-xs">
-                <button
-                  onClick={() => setFilterStatus("all")}
-                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${
-                    filterStatus === "all" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"
-                  }`}
-                >
-                  ทั้งหมด ({invites.length})
-                </button>
-                <button
-                  onClick={() => setFilterStatus("unused")}
-                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${
-                    filterStatus === "unused" ? "bg-emerald-600 text-white shadow-sm" : "text-muted-foreground"
-                  }`}
-                >
-                  ยังไม่ใช้งาน ({unusedCount})
-                </button>
-                <button
-                  onClick={() => setFilterStatus("used")}
-                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${
-                    filterStatus === "used" ? "bg-foreground text-background shadow-sm" : "text-muted-foreground"
-                  }`}
-                >
-                  ใช้งานแล้ว ({usedCount})
-                </button>
-              </div>
-
-              <div className="relative min-w-[200px]">
-                <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs" />
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="ค้นหารหัส / ชื่อครู..."
-                  className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-background/60 border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Table */}
-          <div className="overflow-x-auto rounded-2xl border border-border/60">
-            <table className="w-full text-left text-sm border-collapse">
-              <thead>
-                <tr className="bg-muted/40 text-xs font-bold text-muted-foreground border-b border-border">
-                  <th className="py-3.5 px-4">รหัสเชิญ (Invite Code)</th>
-                  <th className="py-3.5 px-4">หมายเหตุ / ระบุชื่อครู</th>
-                  <th className="py-3.5 px-4">สถานะ</th>
-                  <th className="py-3.5 px-4">ผู้ใช้งาน (ครูที่สมัคร)</th>
-                  <th className="py-3.5 px-4">วันที่สร้าง</th>
-                  <th className="py-3.5 px-4 text-center">จัดการ</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/60">
-                {loading ? (
-                  <tr>
-                    <td colSpan={6} className="py-12 text-center text-muted-foreground">
-                      <i className="fa-solid fa-circle-notch fa-spin text-primary text-xl mb-2 block" />
-                      กำลังโหลดข้อมูล...
-                    </td>
-                  </tr>
-                ) : filteredInvites.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="py-12 text-center text-muted-foreground">
-                      <i className="fa-regular fa-folder-open text-2xl mb-2 block opacity-40" />
-                      {searchTerm ? "ไม่พบรหัสที่ตรงกับคำค้นหา" : "ยังไม่มีรหัสเชิญในระบบ"}
-                    </td>
-                  </tr>
-                ) : (
-                  filteredInvites.map((inv) => (
-                    <tr
-                      key={inv.id}
-                      className="hover:bg-muted/20 transition-colors group"
+            {/* List & Filter Card */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-slate-800">รายการรหัสทั้งหมด</span>
+                  <span className="text-xs text-slate-400">({invites.length} รายการ)</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative">
+                    <i className="fa-solid fa-search absolute left-3 top-2.5 text-xs text-slate-400" />
+                    <input
+                      type="text"
+                      value={inviteSearch}
+                      onChange={(e) => setInviteSearch(e.target.value)}
+                      placeholder="ค้นหารหัส / บันทึก..."
+                      className="pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                    />
+                  </div>
+                  <div className="flex rounded-lg border border-slate-200 p-0.5 bg-slate-50 text-xs">
+                    <button
+                      onClick={() => setInviteFilter("all")}
+                      className={`px-2.5 py-1 rounded-md transition ${inviteFilter === "all" ? "bg-white font-semibold text-slate-900 shadow-sm" : "text-slate-600"}`}
                     >
-                      {/* Code + Copy */}
-                      <td className="py-3.5 px-4 font-mono font-bold text-foreground">
-                        <div className="flex items-center gap-2">
-                          <span className="tracking-wider bg-background px-2.5 py-1 rounded-lg border border-border/80 shadow-xs">
-                            {inv.code}
-                          </span>
-                          <button
-                            onClick={() => handleCopy(inv.code)}
-                            title="คัดลอกรหัส"
-                            className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-                          >
-                            <i className={copiedCode === inv.code ? "fa-solid fa-check text-emerald-500" : "fa-regular fa-copy"} />
-                          </button>
-                        </div>
-                      </td>
+                      ทั้งหมด ({invites.length})
+                    </button>
+                    <button
+                      onClick={() => setInviteFilter("unused")}
+                      className={`px-2.5 py-1 rounded-md transition ${inviteFilter === "unused" ? "bg-white font-semibold text-emerald-700 shadow-sm" : "text-slate-600"}`}
+                    >
+                      ยังไม่ใช้ ({unusedCount})
+                    </button>
+                    <button
+                      onClick={() => setInviteFilter("used")}
+                      className={`px-2.5 py-1 rounded-md transition ${inviteFilter === "used" ? "bg-white font-semibold text-slate-700 shadow-sm" : "text-slate-600"}`}
+                    >
+                      ใช้แล้ว ({usedCount})
+                    </button>
+                  </div>
+                </div>
+              </div>
 
-                      {/* Note */}
-                      <td className="py-3.5 px-4 text-foreground text-xs font-medium">
-                        {inv.note ? (
-                          <span>{inv.note}</span>
-                        ) : (
-                          <span className="text-muted-foreground italic">- ไม่ได้ระบุ -</span>
-                        )}
-                      </td>
-
-                      {/* Status Badge */}
-                      <td className="py-3.5 px-4">
-                        {inv.isUsed ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-muted text-muted-foreground">
-                            <i className="fa-solid fa-circle text-[8px]" /> ใช้งานแล้ว
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                            <i className="fa-solid fa-circle-check text-[10px]" /> ยังไม่ใช้งาน
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Used By */}
-                      <td className="py-3.5 px-4 text-xs">
-                        {inv.isUsed ? (
-                          <div>
-                            <span className="font-semibold text-foreground block">
-                              {inv.usedByName || "ไม่ระบุชื่อ"}
+              {loadingInvites ? (
+                <div className="p-12 text-center text-slate-400 text-sm">
+                  <i className="fa-solid fa-circle-notch fa-spin mr-2" /> กำลังโหลดข้อมูล...
+                </div>
+              ) : filteredInvites.length === 0 ? (
+                <div className="p-12 text-center text-slate-400 text-sm">
+                  <i className="fa-solid fa-inbox text-3xl mb-2 text-slate-300 block" />
+                  ไม่พบรหัสเชิญตามเงื่อนไข
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50/70 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-semibold">
+                      <tr>
+                        <th className="py-3 px-4">รหัส (Invite Code)</th>
+                        <th className="py-3 px-4">สถานะ</th>
+                        <th className="py-3 px-4">บันทึกช่วยจำ</th>
+                        <th className="py-3 px-4">ผู้ใช้งาน</th>
+                        <th className="py-3 px-4">วันที่สร้าง</th>
+                        <th className="py-3 px-4 text-right">การจัดการ</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-slate-700">
+                      {filteredInvites.map((inv) => (
+                        <tr key={inv.code} className="hover:bg-slate-50/60 transition">
+                          <td className="py-3 px-4 font-mono font-bold text-slate-900 tracking-wider">
+                            <span className="bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                              {inv.code}
                             </span>
-                            {inv.usedAt && (
-                              <span className="text-[11px] text-muted-foreground block">
-                                {new Date(inv.usedAt).toLocaleDateString("th-TH", {
-                                  year: "numeric",
-                                  month: "short",
-                                  day: "numeric",
-                                })}
+                          </td>
+                          <td className="py-3 px-4">
+                            {inv.isUsed ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-slate-600 bg-slate-100 border border-slate-200 font-medium">
+                                <span className="w-1.5 h-1.5 rounded-full bg-slate-400" /> ใช้แล้ว
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-emerald-700 bg-emerald-50 border border-emerald-200 font-medium">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> พร้อมใช้งาน
                               </span>
                             )}
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground/60">-</span>
-                        )}
-                      </td>
-
-                      {/* Created At */}
-                      <td className="py-3.5 px-4 text-xs text-muted-foreground">
-                        {new Date(inv.createdAt).toLocaleDateString("th-TH", {
-                          year: "numeric",
-                          month: "short",
-                          day: "numeric",
-                        })}
-                      </td>
-
-                      {/* Actions */}
-                      <td className="py-3.5 px-4 text-center">
-                        {inv.isUsed ? (
-                          <span
-                            className="text-muted-foreground/40 text-xs cursor-not-allowed"
-                            title="รหัสที่ใช้งานแล้วไม่สามารถลบได้"
-                          >
-                            <i className="fa-solid fa-lock text-xs" />
-                          </span>
-                        ) : (
-                          <button
-                            onClick={() => handleDelete(inv.code)}
-                            disabled={deletingCode === inv.code}
-                            title="ลบรหัสนี้"
-                            className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                          >
-                            {deletingCode === inv.code ? (
-                              <i className="fa-solid fa-circle-notch fa-spin text-xs" />
+                          </td>
+                          <td className="py-3 px-4 text-slate-600 max-w-[200px] truncate">
+                            {inv.note || "-"}
+                          </td>
+                          <td className="py-3 px-4">
+                            {inv.usedByName ? (
+                              <div>
+                                <p className="font-medium text-slate-900">{inv.usedByName}</p>
+                                <p className="text-[10px] text-slate-400">
+                                  {inv.usedAt ? new Date(inv.usedAt).toLocaleDateString("th-TH") : ""}
+                                </p>
+                              </div>
                             ) : (
-                              <i className="fa-solid fa-trash-can text-xs" />
+                              <span className="text-slate-400">-</span>
                             )}
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                          </td>
+                          <td className="py-3 px-4 text-slate-500">
+                            {inv.createdAt ? new Date(inv.createdAt).toLocaleDateString("th-TH") : "-"}
+                          </td>
+                          <td className="py-3 px-4 text-right space-x-1">
+                            {!inv.isUsed && (
+                              <button
+                                onClick={() => handleCopy(inv.code)}
+                                title="คัดลอกรหัส"
+                                className="px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium transition"
+                              >
+                                <i className="fa-solid fa-copy mr-1" />
+                                {copiedCode === inv.code ? "คัดลอกแล้ว" : "คัดลอก"}
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleDeleteInvite(inv.code)}
+                              disabled={deletingCode === inv.code}
+                              title="ลบรหัส"
+                              className="px-2 py-1 rounded bg-rose-50 hover:bg-rose-100 text-rose-600 transition disabled:opacity-50"
+                            >
+                              <i className="fa-solid fa-trash-can" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* TAB 2: ADMIN WHITELIST */}
+        {activeTab === "whitelist" && (
+          <div className="space-y-6">
+            {/* Add Admin Form */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm">
+              <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                <i className="fa-solid fa-user-plus text-emerald-600" />
+                เพิ่มอีเมลผู้ดูแลระบบ (Admin Whitelist)
+              </h2>
+              <p className="text-xs text-slate-500 mt-1">
+                ระบบจะตรวจสอบว่าอีเมลต้องลงท้ายด้วย <code className="text-emerald-700 font-mono bg-emerald-50 px-1 py-0.5 rounded">.ac.th</code> เท่านั้น เมื่อเพิ่มแล้วเจ้าของอีเมลจะสามารถสมัครบัญชีแอดมินผ่านลิงก์เฉพาะได้
+              </p>
+
+              <form onSubmit={handleAddAdmin} className="mt-4 flex flex-col sm:flex-row gap-3">
+                <input
+                  type="email"
+                  required
+                  value={newAdminEmail}
+                  onChange={(e) => setNewAdminEmail(e.target.value)}
+                  placeholder="อีเมลทางการ เช่น admin@school.ac.th"
+                  className="flex-1 px-3.5 py-2 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                />
+                <input
+                  type="text"
+                  value={newAdminNote}
+                  onChange={(e) => setNewAdminNote(e.target.value)}
+                  placeholder="หมายเหตุ (เช่น ฝ่ายวิชาการ)"
+                  className="px-3.5 py-2 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 min-w-[200px]"
+                />
+                <button
+                  type="submit"
+                  disabled={addingAdmin}
+                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm transition shadow-sm shadow-emerald-600/20 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {addingAdmin ? (
+                    <>
+                      <i className="fa-solid fa-circle-notch fa-spin text-xs" />
+                      กำลังบันทึก...
+                    </>
+                  ) : (
+                    <>
+                      <i className="fa-solid fa-shield-check" />
+                      อนุมัติสิทธิ์
+                    </>
+                  )}
+                </button>
+              </form>
+            </div>
+
+            {/* Whitelist Table */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-slate-800">รายชื่ออีเมลที่ได้รับสิทธิ์แอดมิน</span>
+                  <span className="text-xs text-slate-400">({whitelist.length} บัญชี)</span>
+                </div>
+                <button
+                  onClick={loadWhitelist}
+                  className="text-xs text-slate-500 hover:text-emerald-600 flex items-center gap-1 transition"
+                >
+                  <i className="fa-solid fa-rotate-right" /> รีเฟรช
+                </button>
+              </div>
+
+              {loadingWhitelist ? (
+                <div className="p-12 text-center text-slate-400 text-sm">
+                  <i className="fa-solid fa-circle-notch fa-spin mr-2" /> กำลังโหลดรายชื่อ...
+                </div>
+              ) : whitelist.length === 0 ? (
+                <div className="p-12 text-center text-slate-400 text-sm">
+                  <i className="fa-solid fa-user-shield text-3xl mb-2 text-slate-300 block" />
+                  ยังไม่มีอีเมลในรายการ Whitelist
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50/70 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-semibold">
+                      <tr>
+                        <th className="py-3 px-4">อีเมลที่ได้รับอนุญาต</th>
+                        <th className="py-3 px-4">สถานะ</th>
+                        <th className="py-3 px-4">หมายเหตุ</th>
+                        <th className="py-3 px-4">ผู้อนุมัติ</th>
+                        <th className="py-3 px-4">วันที่บันทึก</th>
+                        <th className="py-3 px-4 text-right">การจัดการ</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-slate-700">
+                      {whitelist.map((w) => (
+                        <tr key={w.email} className="hover:bg-slate-50/60 transition">
+                          <td className="py-3 px-4 font-medium text-slate-900">
+                            <span className="inline-flex items-center gap-1.5">
+                              <i className="fa-solid fa-envelope text-slate-400" />
+                              {w.email}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-emerald-700 bg-emerald-50 border border-emerald-200 font-medium">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> อนุมัติแล้ว
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-slate-600">{w.note || "-"}</td>
+                          <td className="py-3 px-4 text-slate-500">{w.addedByName || "-"}</td>
+                          <td className="py-3 px-4 text-slate-500">
+                            {w.createdAt ? new Date(w.createdAt).toLocaleDateString("th-TH") : "-"}
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <button
+                              onClick={() => handleDeleteAdmin(w.email)}
+                              disabled={deletingAdminEmail === w.email}
+                              className="px-2 py-1 rounded bg-rose-50 hover:bg-rose-100 text-rose-600 transition disabled:opacity-50 text-xs font-medium"
+                            >
+                              <i className="fa-solid fa-trash-can mr-1" /> ลบสิทธิ์
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 3: USERS & PARENT TOKENS */}
+        {activeTab === "users" && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-slate-800">รายชื่อผู้ใช้ทั้งหมดในระบบ</span>
+                  <span className="text-xs text-slate-400">({users.length} คน)</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative">
+                    <i className="fa-solid fa-search absolute left-3 top-2.5 text-xs text-slate-400" />
+                    <input
+                      type="text"
+                      value={userSearch}
+                      onChange={(e) => setUserSearch(e.target.value)}
+                      placeholder="ค้นหาชื่อ / รหัสนักเรียน / อีเมล..."
+                      className="pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 min-w-[200px]"
+                    />
+                  </div>
+                  <div className="flex rounded-lg border border-slate-200 p-0.5 bg-slate-50 text-xs">
+                    <button
+                      onClick={() => setUserRoleFilter("all")}
+                      className={`px-2.5 py-1 rounded-md transition ${userRoleFilter === "all" ? "bg-white font-semibold text-slate-900 shadow-sm" : "text-slate-600"}`}
+                    >
+                      ทั้งหมด
+                    </button>
+                    <button
+                      onClick={() => setUserRoleFilter("student")}
+                      className={`px-2.5 py-1 rounded-md transition ${userRoleFilter === "student" ? "bg-white font-semibold text-emerald-700 shadow-sm" : "text-slate-600"}`}
+                    >
+                      นักเรียน
+                    </button>
+                    <button
+                      onClick={() => setUserRoleFilter("teacher")}
+                      className={`px-2.5 py-1 rounded-md transition ${userRoleFilter === "teacher" ? "bg-white font-semibold text-teal-700 shadow-sm" : "text-slate-600"}`}
+                    >
+                      ครู
+                    </button>
+                    <button
+                      onClick={() => setUserRoleFilter("admin")}
+                      className={`px-2.5 py-1 rounded-md transition ${userRoleFilter === "admin" ? "bg-white font-semibold text-purple-700 shadow-sm" : "text-slate-600"}`}
+                    >
+                      แอดมิน
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {loadingUsers ? (
+                <div className="p-12 text-center text-slate-400 text-sm">
+                  <i className="fa-solid fa-circle-notch fa-spin mr-2" /> กำลังโหลดรายชื่อผู้ใช้...
+                </div>
+              ) : filteredUsers.length === 0 ? (
+                <div className="p-12 text-center text-slate-400 text-sm">
+                  <i className="fa-solid fa-users text-3xl mb-2 text-slate-300 block" />
+                  ไม่พบผู้ใช้ตามที่ค้นหา
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50/70 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-semibold">
+                      <tr>
+                        <th className="py-3 px-4">ผู้ใช้งาน</th>
+                        <th className="py-3 px-4">บทบาท</th>
+                        <th className="py-3 px-4">ข้อมูลระบุตัวตน</th>
+                        <th className="py-3 px-4">โทเค็นผู้ปกครอง (Magic Link)</th>
+                        <th className="py-3 px-4">วันที่ลงทะเบียน</th>
+                        <th className="py-3 px-4 text-right">การจัดการ</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-slate-700">
+                      {filteredUsers.map((u) => {
+                        const tokenInfo = parentTokens.find((pt) => pt.studentUid === u.id || pt.token === u.parentViewToken);
+                        const isStudent = u.role === "student";
+
+                        return (
+                          <tr key={u.id} className="hover:bg-slate-50/60 transition">
+                            <td className="py-3 px-4">
+                              <p className="font-semibold text-slate-900">{u.fullName || u.displayName || "ไม่มีชื่อ"}</p>
+                              <p className="text-[10px] text-slate-400 font-mono truncate max-w-[150px]">UID: {u.id}</p>
+                            </td>
+                            <td className="py-3 px-4">
+                              {u.role === "student" ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-emerald-700 bg-emerald-50 border border-emerald-200 font-medium">
+                                  นักเรียน
+                                </span>
+                              ) : u.role === "teacher" ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-teal-700 bg-teal-50 border border-teal-200 font-medium">
+                                  ครู
+                                </span>
+                              ) : u.role === "admin" ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-purple-700 bg-purple-50 border border-purple-200 font-medium">
+                                  ผู้ดูแลระบบ
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-slate-600 bg-slate-100 border border-slate-200 font-medium">
+                                  {u.role}
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4">
+                              {isStudent ? (
+                                <div>
+                                  <span className="font-mono font-medium text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                    รหัส: {u.studentId || "-"}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-slate-600">{u.email}</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4">
+                              {isStudent ? (
+                                tokenInfo ? (
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-1.5">
+                                      <span
+                                        className={`inline-block w-2 h-2 rounded-full ${
+                                          tokenInfo.isActive ? "bg-emerald-500" : "bg-rose-400"
+                                        }`}
+                                      />
+                                      <span className="font-mono text-[11px] text-slate-600">
+                                        {tokenInfo.token.slice(0, 10)}...
+                                      </span>
+                                      <span className={`text-[10px] px-1.5 py-0.2 rounded font-medium ${
+                                        tokenInfo.isActive ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-slate-100 text-slate-500"
+                                      }`}>
+                                        {tokenInfo.isActive ? "เปิด" : "ปิด"}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        onClick={() => handleCopyParentLink(tokenInfo.token)}
+                                        title="คัดลอกลิงก์ผู้ปกครอง"
+                                        className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] transition"
+                                      >
+                                        <i className="fa-solid fa-copy mr-1" /> ลิงก์
+                                      </button>
+                                      <button
+                                        onClick={() => handleToggleToken(tokenInfo.token, tokenInfo.isActive)}
+                                        disabled={togglingToken === tokenInfo.token}
+                                        title={tokenInfo.isActive ? "ปิดการเข้าถึง" : "เปิดการเข้าถึง"}
+                                        className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] transition"
+                                      >
+                                        {tokenInfo.isActive ? "ปิดใช้งาน" : "เปิดใช้งาน"}
+                                      </button>
+                                      <button
+                                        onClick={() => handleResetToken(u.id, u.fullName || u.displayName || "")}
+                                        disabled={resettingTokenForStudent === u.id}
+                                        title="สร้างลิงก์ใหม่ (รีเซ็ต)"
+                                        className="px-1.5 py-0.5 rounded bg-amber-50 hover:bg-amber-100 text-amber-700 text-[10px] transition"
+                                      >
+                                        <i className="fa-solid fa-rotate mr-0.5" /> รีเซ็ต
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => handleResetToken(u.id, u.fullName || u.displayName || "")}
+                                    disabled={resettingTokenForStudent === u.id}
+                                    className="px-2 py-1 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[10px] font-medium transition"
+                                  >
+                                    + สร้างลิงก์ผู้ปกครอง
+                                  </button>
+                                )
+                              ) : (
+                                <span className="text-slate-400">-</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4 text-slate-500">
+                              {u.createdAt ? new Date(u.createdAt).toLocaleDateString("th-TH") : "-"}
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              <button
+                                onClick={() => handleDeleteUser(u.id, u.fullName || u.displayName || u.email)}
+                                disabled={deletingUserId === u.id}
+                                className="px-2 py-1 rounded bg-rose-50 hover:bg-rose-100 text-rose-600 transition disabled:opacity-50 text-xs font-medium"
+                              >
+                                <i className="fa-solid fa-trash-can mr-1" /> ลบผู้ใช้
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

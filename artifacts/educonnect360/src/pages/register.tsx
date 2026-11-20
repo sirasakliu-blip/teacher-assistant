@@ -125,42 +125,31 @@ export default function Register() {
             เริ่มต้นใช้งานแคมปัสดิจิทัลของคุณวันนี้
           </p>
 
-          <div className="grid grid-cols-3 gap-2 mb-6">
+          {/* เหลือเฉพาะ 2 บทบาทหลัก: นักเรียน และ ครู */}
+          <div className="grid grid-cols-2 gap-3 mb-6">
             <button
               type="button"
               onClick={() => setRole("student")}
-              className={`rounded-xl p-3 border-2 transition-all duration-200 flex flex-col items-center gap-1.5 ${
+              className={`rounded-2xl p-3.5 border-2 transition-all duration-200 flex flex-col items-center gap-1.5 ${
                 role === "student"
-                  ? "border-primary bg-primary/10 text-primary shadow-md"
+                  ? "border-primary bg-primary/10 text-primary shadow-md shadow-primary/20 scale-[1.01]"
                   : "border-border bg-background/40 text-muted-foreground hover:border-primary/40"
               }`}
             >
-              <i className="fa-solid fa-user-graduate text-lg" />
-              <span className="text-xs font-semibold">นักเรียน</span>
+              <i className="fa-solid fa-user-graduate text-xl" />
+              <span className="text-sm font-semibold">นักเรียน</span>
             </button>
             <button
               type="button"
               onClick={() => setRole("teacher")}
-              className={`rounded-xl p-3 border-2 transition-all duration-200 flex flex-col items-center gap-1.5 ${
+              className={`rounded-2xl p-3.5 border-2 transition-all duration-200 flex flex-col items-center gap-1.5 ${
                 role === "teacher"
-                  ? "border-primary bg-primary/10 text-primary shadow-md"
+                  ? "border-primary bg-primary/10 text-primary shadow-md shadow-primary/20 scale-[1.01]"
                   : "border-border bg-background/40 text-muted-foreground hover:border-primary/40"
               }`}
             >
-              <i className="fa-solid fa-chalkboard-user text-lg" />
-              <span className="text-xs font-semibold">ครู</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setRole("parent")}
-              className={`rounded-xl p-3 border-2 transition-all duration-200 flex flex-col items-center gap-1.5 ${
-                role === "parent"
-                  ? "border-primary bg-primary/10 text-primary shadow-md"
-                  : "border-border bg-background/40 text-muted-foreground hover:border-primary/40"
-              }`}
-            >
-              <i className="fa-solid fa-people-roof text-lg" />
-              <span className="text-xs font-semibold">ผู้ปกครอง</span>
+              <i className="fa-solid fa-chalkboard-user text-xl" />
+              <span className="text-sm font-semibold">ครู</span>
             </button>
           </div>
 
@@ -281,6 +270,16 @@ export default function Register() {
               เข้าสู่ระบบ
             </Link>
           </p>
+
+          <div className="pt-4 mt-6 border-t border-border/40 text-center">
+            <Link
+              href="/admin-register"
+              className="text-xs text-muted-foreground/70 hover:text-primary transition-colors inline-flex items-center gap-1.5"
+            >
+              <i className="fa-solid fa-shield-halved text-[11px]" />
+              ลงทะเบียนสำหรับผู้ดูแลระบบสถานศึกษา (Admin)
+            </Link>
+          </div>
         </div>
       </div>
     </div>

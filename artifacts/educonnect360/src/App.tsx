@@ -5,6 +5,9 @@ import NotFound from '@/pages/not-found';
 import Home from '@/pages/home';
 import Login from '@/pages/login';
 import Register from '@/pages/register';
+import AdminRegister from '@/pages/admin-register';
+import AdminVerifyEmail from '@/pages/admin-verify-email';
+import ParentView from '@/pages/parent-view';
 import TeacherHome from '@/pages/teacher-home';
 import TeacherClass from '@/pages/teacher-class';
 import TeacherGradebook from '@/pages/teacher-gradebook';
@@ -26,6 +29,10 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
+      <Route path="/admin-register" component={AdminRegister} />
+      <Route path="/admin-verify-email" component={AdminVerifyEmail} />
+      <Route path="/parent-view" component={ParentView} />
+
       <Route path="/teacher">
         <ProtectedRoute role="teacher">
           <TeacherHome />
@@ -51,8 +58,18 @@ function Router() {
           <TeacherLeaveRequests />
         </ProtectedRoute>
       </Route>
-      <Route path="/teacher/invites" component={AdminDashboard} />
-      <Route path="/admin" component={AdminDashboard} />
+
+      <Route path="/teacher/invites">
+        <ProtectedRoute role="admin">
+          <AdminDashboard />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/admin">
+        <ProtectedRoute role="admin">
+          <AdminDashboard />
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/student">
         <ProtectedRoute role="student">
           <StudentHome />

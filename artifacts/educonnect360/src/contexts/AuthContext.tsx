@@ -8,14 +8,20 @@ import {
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
+  sendEmailVerification,
   signInWithEmailAndPassword,
   signOut,
   updateProfile,
   type User as FirebaseUser,
 } from "firebase/auth";
-import { doc, getDoc, runTransaction, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, runTransaction, serverTimestamp, setDoc } from "firebase/firestore";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase";
-import { createUserProfile, getUserProfile } from "@/lib/firestore";
+import {
+  checkAdminWhitelist,
+  createUserProfile,
+  generateParentViewToken,
+  getUserProfile,
+} from "@/lib/firestore";
 import type { User, UserRole } from "@/types";
 
 interface AuthContextValue {
@@ -29,6 +35,13 @@ interface AuthContextValue {
     role: UserRole,
     inviteCodeOrExtra?: string | { inviteCode?: string; studentId?: string },
   ) => Promise<void>;
+  registerAdmin: (
+    email: string,
+    password: string,
+    displayName: string,
+  ) => Promise<void>;
+  resendVerificationEmail: () => Promise<void>;
+  reloadUser: () => Promise<FirebaseUser | null>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -98,8 +111,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       await updateProfile(credential.user, { displayName });
 
-      const randomChars = Math.random().toString(36).substring(2, 8).toUpperCase();
-      const parentViewToken = `PVT_${randomChars}`;
+      const parentViewToken = generateParentViewToken();
+
+      // Create document in parent_view_tokens collection
+      await setDoc(doc(db, "parent_view_tokens", parentViewToken), {
+        token: parentViewToken,
+        studentUid: credential.user.uid,
+        studentId: cleanStudentId,
+        studentName: displayName,
+        isActive: true,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
 
       const userProfile = await createUserProfile(
         credential.user.uid,
@@ -193,6 +216,61 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(userProfile);
   }
 
+  async function registerAdmin(
+    email: string,
+    password: string,
+    displayName: string,
+  ) {
+    if (!auth || !db) throw new Error("Firebase is not configured.");
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail.endsWith(".ac.th")) {
+      throw new Error("อีเมลผู้ดูแลระบบต้องลงท้ายด้วย .ac.th เท่านั้น");
+    }
+
+    const isWhitelisted = await checkAdminWhitelist(cleanEmail);
+    if (!isWhitelisted) {
+      throw new Error("อีเมลนี้ไม่ได้รับสิทธิ์ให้ลงทะเบียนเป็นผู้ดูแลระบบ");
+    }
+
+    const credential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+    await updateProfile(credential.user, { displayName });
+
+    const userRef = doc(db, "users", credential.user.uid);
+    await setDoc(userRef, {
+      uid: credential.user.uid,
+      email: cleanEmail,
+      displayName,
+      fullName: displayName,
+      role: "admin",
+      linkedStudentIds: [],
+      photoURL: null,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    try {
+      await sendEmailVerification(credential.user);
+    } catch (err) {
+      console.warn("sendEmailVerification warning:", err);
+    }
+
+    const userProfile = await getUserProfile(credential.user.uid);
+    setFirebaseUser(credential.user);
+    setProfile(userProfile);
+  }
+
+  async function resendVerificationEmail() {
+    if (!auth?.currentUser) throw new Error("ไม่มีผู้ใช้ที่เข้าสู่ระบบ");
+    await sendEmailVerification(auth.currentUser);
+  }
+
+  async function reloadUser(): Promise<FirebaseUser | null> {
+    if (!auth?.currentUser) return null;
+    await auth.currentUser.reload();
+    setFirebaseUser(auth.currentUser);
+    return auth.currentUser;
+  }
+
   async function login(email: string, password: string) {
     if (!auth) throw new Error("Firebase Auth is not configured.");
     const credential = await signInWithEmailAndPassword(auth, email, password);
@@ -210,7 +288,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ firebaseUser, profile, loading, register, login, logout }}
+      value={{
+        firebaseUser,
+        profile,
+        loading,
+        register,
+        registerAdmin,
+        resendVerificationEmail,
+        reloadUser,
+        login,
+        logout,
+      }}
     >
       {children}
     </AuthContext.Provider>

@@ -39,6 +39,29 @@ export interface TeacherInvite {
   usedAt?: string | null; // ISO timestamp
 }
 
+/** Parent magic view token for non-authenticated link-based student monitoring. */
+export interface ParentViewToken {
+  id: string; // token string (24 chars)
+  token: string;
+  studentUid: string;
+  studentId: string;
+  studentName: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Pre-approved administrator email whitelist record, stored in `admin_whitelist` collection. */
+export interface AdminWhitelist {
+  id: string; // Email address, e.g. "admin@school.ac.th"
+  email: string;
+  isApproved: boolean;
+  note?: string;
+  addedByUid?: string;
+  addedByName?: string;
+  createdAt: string;
+}
+
 /** Preset accent covers for classes -- avoids requiring a real file upload for the MVP. */
 export type ClassCover =
   | "emerald"

@@ -15,9 +15,19 @@ export default function Login() {
 
   useEffect(() => {
     if (!loading && firebaseUser && profile) {
-      if (profile.role === "teacher" || profile.role === "admin") setLocation("/teacher");
-      else if (profile.role === "parent") setLocation("/parent");
-      else setLocation("/student");
+      if (profile.role === "admin") {
+        if (!firebaseUser.emailVerified) {
+          setLocation("/admin-verify-email");
+        } else {
+          setLocation("/admin");
+        }
+      } else if (profile.role === "teacher") {
+        setLocation("/teacher");
+      } else if (profile.role === "parent") {
+        setLocation("/parent");
+      } else {
+        setLocation("/student");
+      }
     }
   }, [loading, firebaseUser, profile, setLocation]);
 
@@ -76,7 +86,7 @@ export default function Login() {
             เข้าสู่ระบบเพื่อจัดการห้องเรียนและการเข้าเรียนของคุณ
           </p>
 
-          {/* Role Tab Switcher: นักเรียน vs ครู */}
+          {/* Role Tab Switcher: นักเรียน vs ครู / บุคลากร */}
           <div className="grid grid-cols-2 gap-2 p-1.5 rounded-2xl bg-muted/60 border border-border/80 mb-6">
             <button
               type="button"
@@ -98,7 +108,7 @@ export default function Login() {
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              <i className="fa-solid fa-chalkboard-user" /> ครู
+              <i className="fa-solid fa-chalkboard-user" /> ครู / บุคลากร
             </button>
           </div>
 
@@ -180,6 +190,16 @@ export default function Login() {
               สมัครสมาชิก
             </Link>
           </p>
+
+          <div className="pt-4 mt-6 border-t border-border/40 text-center">
+            <Link
+              href="/admin-register"
+              className="text-xs text-muted-foreground/70 hover:text-primary transition-colors inline-flex items-center gap-1.5"
+            >
+              <i className="fa-solid fa-shield-halved text-[11px]" />
+              ลงทะเบียนสำหรับผู้ดูแลระบบสถานศึกษา (Admin)
+            </Link>
+          </div>
         </div>
       </div>
     </div>

@@ -2,7 +2,13 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { getClassesForStudent, joinClassByCode, getLeaveRequestsForStudent } from "@/lib/firestore";
+import {
+  getClassesForStudent,
+  joinClassByCode,
+  getLeaveRequestsForStudent,
+  resetParentViewToken,
+  createParentViewTokenDoc,
+} from "@/lib/firestore";
 import { coverGradient } from "@/lib/covers";
 import type { Class, LeaveRequest } from "@/types";
 import { LeaveRequestModal } from "@/components/leave-request-modal";
@@ -22,6 +28,75 @@ export default function StudentHome() {
   const [showLeaveList, setShowLeaveList] = useState(false);
   const [showCreateLeave, setShowCreateLeave] = useState(false);
   const [viewingLeave, setViewingLeave] = useState<LeaveRequest | null>(null);
+
+  // Parent Magic Link state
+  const [currentToken, setCurrentToken] = useState<string>(profile?.parentViewToken || "");
+  const [resettingToken, setResettingToken] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  useEffect(() => {
+    if (profile?.parentViewToken) {
+      setCurrentToken(profile.parentViewToken);
+    } else if (profile && !profile.parentViewToken && profile.role === "student") {
+      createParentViewTokenDoc(
+        profile.id,
+        profile.studentId || "",
+        profile.displayName || "นักเรียน",
+      ).then((newToken) => setCurrentToken(newToken));
+    }
+  }, [profile]);
+
+  function getParentViewUrl() {
+    return `${window.location.origin}/parent-view?token=${currentToken}`;
+  }
+
+  function handleShareLine() {
+    const url = getParentViewUrl();
+    const text = `ติดตามผลการเรียนและการเข้าเรียนของ ${profile?.displayName || "นักเรียน"} ได้ที่นี่: ${url}`;
+    window.open(`https://line.me/R/msg/text/?${encodeURIComponent(text)}`, "_blank");
+  }
+
+  async function handleCopyLink() {
+    try {
+      await navigator.clipboard.writeText(getParentViewUrl());
+      setCopiedLink(true);
+      toast({
+        title: "คัดลอกลิงก์สำเร็จ",
+        description: "สามารถส่งลิงก์ให้ผู้ปกครองทางแชทหรือ LINE ได้ทันที",
+      });
+      setTimeout(() => setCopiedLink(false), 2500);
+    } catch {
+      toast({ variant: "destructive", title: "ไม่สามารถคัดลอกได้" });
+    }
+  }
+
+  async function handleResetToken() {
+    if (!profile) return;
+    if (
+      !confirm(
+        "ต้องการยกเลิกลิงก์เดิมและสร้างลิงก์ใหม่หรือไม่? ผู้ปกครองที่ใช้ลิงก์เดิมจะไม่สามารถเปิดดูได้อีกต่อไป",
+      )
+    )
+      return;
+
+    setResettingToken(true);
+    try {
+      const newToken = await resetParentViewToken(profile.id);
+      setCurrentToken(newToken);
+      toast({
+        title: "สร้างลิงก์ใหม่สำเร็จ",
+        description: "ระบบได้ยกเลิกลิงก์เดิมและสร้างลิงก์ใหม่ให้เรียบร้อยแล้ว",
+      });
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "สร้างลิงก์ใหม่ไม่สำเร็จ",
+        description: err instanceof Error ? err.message : "เกิดข้อผิดพลาด",
+      });
+    } finally {
+      setResettingToken(false);
+    }
+  }
 
   async function loadLeaves() {
     if (!profile) return;
@@ -144,6 +219,55 @@ export default function StudentHome() {
             >
               <i className="fa-solid fa-key" /> เข้าร่วมด้วยรหัส
             </button>
+          </div>
+        </div>
+
+        {/* Parent Magic Link Card */}
+        <div className="glass-panel p-6 rounded-3xl border border-white/40 dark:border-white/10 mb-8 animate-fade-in-up bg-gradient-to-r from-emerald-500/5 via-primary/5 to-teal-500/5">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-xl shrink-0">
+                <i className="fa-solid fa-people-roof" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+                  ลิงก์ติดตามผลสำหรับผู้ปกครอง (Parent Magic Link)
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-semibold border border-emerald-500/20">
+                    ไม่ต้องล็อกอิน
+                  </span>
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  แชร์ลิงก์นี้ให้ผู้ปกครอง เพื่อดูสถิติการเข้าเรียนและสถานะใบลาแบบเรียลไทม์ผ่านมือถือได้ทันที
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={handleShareLine}
+                className="px-3.5 py-2 rounded-xl bg-[#06C755] text-white hover:bg-[#05b34c] transition-all text-xs font-bold flex items-center gap-1.5 shadow-sm"
+              >
+                <i className="fa-brands fa-line text-base" /> แชร์ผ่าน LINE
+              </button>
+
+              <button
+                onClick={handleCopyLink}
+                className="px-3.5 py-2 rounded-xl bg-primary/15 text-primary hover:bg-primary/25 transition-all text-xs font-semibold flex items-center gap-1.5"
+              >
+                <i className={copiedLink ? "fa-solid fa-check text-emerald-500" : "fa-regular fa-copy"} />
+                {copiedLink ? "คัดลอกแล้ว!" : "คัดลอกลิงก์"}
+              </button>
+
+              <button
+                onClick={handleResetToken}
+                disabled={resettingToken}
+                className="px-3.5 py-2 rounded-xl glass-panel text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all text-xs font-semibold flex items-center gap-1.5 border border-border"
+                title="ยกเลิกลิงก์เดิมและสร้างลิงก์ใหม่"
+              >
+                <i className={`fa-solid fa-arrows-rotate ${resettingToken ? "fa-spin" : ""}`} />
+                สร้างลิงก์ใหม่ (รีเซ็ต)
+              </button>
+            </div>
           </div>
         </div>
 
