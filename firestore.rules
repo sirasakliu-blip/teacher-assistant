@@ -38,8 +38,8 @@ service cloud.firestore {
     match /admin_whitelist/{email} {
       // Authenticated users can check whitelist status during registration
       allow get: if isAuthenticated();
-      // Only validated Admins can list, add, modify, or delete
-      allow list, create, update, delete: if isAdmin();
+      // Admins and authorized staff/teachers can list, add, modify, or delete
+      allow list, create, update, delete: if isAdmin() || isTeacher();
     }
 
     // =========================================================================
@@ -49,11 +49,11 @@ service cloud.firestore {
       // Public single-document get for verifying invite code during teacher registration
       allow get: if true;
 
-      // Only Admin can view all codes
-      allow list: if isAdmin();
+      // Admin and teachers can view all codes
+      allow list: if isAdmin() || isTeacher();
 
-      // Only Admin can create or delete codes
-      allow create, delete: if isAdmin();
+      // Admin and teachers can create or delete codes
+      allow create, delete: if isAdmin() || isTeacher();
 
       // Update allowed when consuming code during registration (isUsed false -> true and bound to auth.uid)
       allow update: if isAuthenticated() &&
@@ -72,9 +72,9 @@ service cloud.firestore {
       // Creation allowed by authenticated users (during registration or student generating link)
       allow create: if isAuthenticated();
 
-      // Update and delete allowed for the owning student or admin
+      // Update and delete allowed for the owning student, admin, or teacher
       allow update, delete: if isAuthenticated() &&
-        (resource.data.studentUid == request.auth.uid || isAdmin());
+        (resource.data.studentUid == request.auth.uid || isAdmin() || isTeacher());
     }
 
     // =========================================================================
@@ -87,11 +87,11 @@ service cloud.firestore {
       // Create allowed for the authenticated owner
       allow create: if isUser(userId);
 
-      // Update allowed for the owner or admin
-      allow update: if isUser(userId) || isAdmin();
+      // Update allowed for the owner, admin, or teacher
+      allow update: if isUser(userId) || isAdmin() || isTeacher();
 
-      // Delete allowed only for admin
-      allow delete: if isAdmin();
+      // Delete allowed for admin or teacher
+      allow delete: if isAdmin() || isTeacher();
     }
 
     // =========================================================================

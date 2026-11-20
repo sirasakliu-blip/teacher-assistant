@@ -360,9 +360,11 @@ export default function AdminDashboard() {
             </span>
             <Link
               href="/teacher"
-              className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-xs font-medium text-slate-600 transition"
+              className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-sm flex items-center gap-1.5 transition"
+              title="เข้าสู่ระบบการเรียนการสอน (จัดการห้องเรียน, เช็คชื่อ, การบ้าน, ใบลา)"
             >
-              <i className="fa-solid fa-arrow-left mr-1" /> หน้าครู
+              <i className="fa-solid fa-chalkboard-user mr-1" />
+              <span>โหมดจัดการเรียนการสอน (ครู)</span>
             </Link>
           </div>
         </div>
@@ -370,6 +372,43 @@ export default function AdminDashboard() {
 
       {/* Main Container */}
       <main className="max-w-6xl mx-auto px-4 pt-6 space-y-6">
+        {/* Quick Teacher Portal Banner */}
+        <div className="bg-gradient-to-r from-emerald-500/10 via-teal-500/5 to-transparent border border-emerald-500/20 rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xs">
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-emerald-600/20">
+              <i className="fa-solid fa-graduation-cap text-xl" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="font-bold text-slate-800 text-sm">ระบบการเรียนการสอน (สำหรับครูและบุคลากร)</h2>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800">ใช้งานได้ทันที</span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                สามารถสร้างห้องเรียน เช็คชื่อนักเรียน มอบหมายงาน และอนุมัติใบลาเรียนได้ครบวงจร
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href="/teacher"
+              className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:border-emerald-500 hover:text-emerald-700 text-slate-700 text-xs font-semibold transition shadow-xs flex items-center gap-1.5"
+            >
+              <i className="fa-solid fa-chalkboard text-emerald-600" /> ห้องเรียนทั้งหมด
+            </Link>
+            <Link
+              href="/teacher/leave-requests"
+              className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:border-emerald-500 hover:text-emerald-700 text-slate-700 text-xs font-semibold transition shadow-xs flex items-center gap-1.5"
+            >
+              <i className="fa-solid fa-file-signature text-emerald-600" /> ตรวจสอบใบลา
+            </Link>
+            <Link
+              href="/teacher/ai-assistant"
+              className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:border-emerald-500 hover:text-emerald-700 text-slate-700 text-xs font-semibold transition shadow-xs flex items-center gap-1.5"
+            >
+              <i className="fa-solid fa-wand-magic-sparkles text-emerald-600" /> ผู้ช่วยสอน AI
+            </Link>
+          </div>
+        </div>
         {/* Navigation Tabs */}
         <div className="flex border-b border-slate-200 bg-white rounded-t-xl px-2 pt-2">
           <button

@@ -32,8 +32,11 @@ export function ProtectedRoute({
     return <Redirect to="/admin-verify-email" />;
   }
 
-  // Allow admin to view teacher pages if needed, but otherwise enforce strict role check
-  const hasAccess = profile.role === role || (role === "teacher" && profile.role === "admin");
+  // Allow admin to view teacher pages, and allow teachers/staff to access admin pages
+  const hasAccess =
+    profile.role === role ||
+    (role === "teacher" && profile.role === "admin") ||
+    (role === "admin" && profile.role === "teacher");
 
   if (!hasAccess) {
     const dest =

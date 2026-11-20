@@ -11,7 +11,7 @@ export function TeacherNav() {
   const links = [
     { href: "/teacher", label: "ห้องเรียน", icon: "fa-chalkboard" },
     { href: "/teacher/leave-requests", label: "หนังสือใบลา", icon: "fa-file-signature" },
-    { href: "/teacher/invites", label: "รหัสเชิญครู", icon: "fa-key" },
+    { href: "/admin", label: "ระบบแอดมิน", icon: "fa-shield-halved" },
     { href: "/teacher/ai-assistant", label: "ผู้ช่วยสอน AI", icon: "fa-wand-magic-sparkles" },
   ];
 
@@ -46,6 +46,14 @@ export function TeacherNav() {
         </div>
       </div>
       <div className="flex items-center gap-3">
+        <Link
+          href="/admin"
+          className="px-3 py-1.5 rounded-lg border border-purple-500/30 bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-semibold flex items-center gap-1.5 transition"
+          title="เข้าสู่ระบบผู้ดูแลระบบ (Admin Console)"
+        >
+          <i className="fa-solid fa-shield-halved text-purple-600" />
+          <span className="hidden sm:inline">แผงควบคุมแอดมิน</span>
+        </Link>
         <button
           onClick={() => setShowProfileModal(true)}
           className="px-3 py-1.5 rounded-lg border border-primary/20 bg-primary/5 hover:bg-primary/10 text-primary text-xs font-semibold flex items-center gap-1.5 transition"
@@ -56,6 +64,11 @@ export function TeacherNav() {
         </button>
         <span className="hidden sm:flex items-center gap-2 text-sm font-medium text-muted-foreground">
           <i className="fa-solid fa-chalkboard-user text-primary" /> {profile?.displayName}
+          {profile?.role === "admin" && (
+            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200">
+              Admin
+            </span>
+          )}
         </span>
         <button
           onClick={logout}
