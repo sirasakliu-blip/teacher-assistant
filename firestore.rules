@@ -18,14 +18,12 @@ service cloud.firestore {
 
     // Admin validation:
     // 1. Authenticated
-    // 2. Email verified in Firebase Auth token
-    // 3. Email ends with .ac.th
-    // 4. Role in users/{uid} is 'admin'
+    // 2. Role in users/{uid} is 'admin' OR email in admin_whitelist
     function isAdmin() {
-      return isAuthenticated() &&
-        request.auth.token.email_verified == true &&
-        request.auth.token.email.matches('.*\\.ac\\.th$') &&
-        getUserData().role == 'admin';
+      return isAuthenticated() && (
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().role == 'admin') ||
+        (request.auth.token.email != null && exists(/databases/$(database)/documents/admin_whitelist/$(request.auth.token.email)))
+      );
     }
 
     function isTeacher() {

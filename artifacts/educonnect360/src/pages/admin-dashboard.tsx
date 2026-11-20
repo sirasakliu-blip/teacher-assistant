@@ -510,13 +510,23 @@ export default function AdminDashboard() {
 
   /* ---------------- Tab 3: Users & Parent Tokens Handlers ---------------- */
   async function handleDeleteUser(userId: string, userName: string) {
+    const currentUid = profile?.id || profile?.uid || firebaseUser?.uid;
+    if (userId === currentUid) {
+      toast({
+        variant: "destructive",
+        title: "ไม่สามารถลบบัญชีของตนเองได้",
+        description: "คุณกำลังเข้าสู่ระบบด้วยบัญชีนี้อยู่ ไม่สามารถลบผู้ดูแลระบบปัจจุบันได้",
+      });
+      return;
+    }
+
     if (!confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบผู้ใช้ "${userName}" ออกจากระบบ?`)) return;
     setDeletingUserId(userId);
     try {
       await deleteUserFromSystem(userId);
       toast({
         title: "ลบผู้ใช้สำเร็จ",
-        description: `ลบ "${userName}" ออกจากฐานข้อมูลแล้ว`,
+        description: `ลบ "${userName}" ออกจากฐานข้อมูลเรียบร้อยแล้ว`,
       });
       setUsers((prev) => prev.filter((u) => u.id !== userId));
     } catch (err) {
@@ -1468,9 +1478,17 @@ export default function AdminDashboard() {
                                 <button
                                   onClick={() => handleDeleteUser(u.id, u.fullName || u.displayName || u.email)}
                                   disabled={deletingUserId === u.id}
-                                  className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 transition disabled:opacity-50 text-xs font-medium cursor-pointer"
+                                  className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 transition disabled:opacity-50 text-xs font-medium cursor-pointer flex items-center gap-1"
                                 >
-                                  <i className="fa-solid fa-trash-can mr-1" /> ลบ
+                                  {deletingUserId === u.id ? (
+                                    <>
+                                      <i className="fa-solid fa-circle-notch fa-spin text-[10px]" /> กำลังลบ...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <i className="fa-solid fa-trash-can mr-1" /> ลบ
+                                    </>
+                                  )}
                                 </button>
                               </div>
                             </td>

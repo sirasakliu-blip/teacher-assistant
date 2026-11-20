@@ -72,6 +72,35 @@ function tsToISO(value: unknown): string {
   return new Date().toISOString();
 }
 
+/**
+ * Helper with safe timeout for Firestore network calls
+ */
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms = 6000,
+  errorMsg = "การทำงานใช้เวลานานเกินไป กรุณาลองใหม่อีกครั้ง",
+): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(errorMsg)), ms)),
+  ]);
+}
+
+/**
+ * Direct REST API fallback for deleting documents when SDK connection or local index hangs
+ */
+async function deleteDocViaRest(collectionName: string, docId: string): Promise<boolean> {
+  try {
+    const projectId = "educonnect360-d5c47";
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${collectionName}/${encodeURIComponent(docId)}`;
+    const res = await fetch(url, { method: "DELETE" });
+    return res.ok;
+  } catch (err) {
+    console.warn(`REST deleteDoc fallback failed for ${collectionName}/${docId}:`, err);
+    return false;
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Users                                                               */
 /* ------------------------------------------------------------------ */
@@ -1639,7 +1668,63 @@ export async function getAllUsers(): Promise<User[]> {
 
 export async function deleteUserFromSystem(uid: string): Promise<void> {
   const database = requireDb();
-  await deleteDoc(doc(database, "users", uid));
+
+  // 1. Fetch user data first to find tokens/studentId to clean up
+  let userData: any = null;
+  try {
+    const userSnap = await withTimeout(getDoc(doc(database, "users", uid)), 3000);
+    if (userSnap.exists()) {
+      userData = userSnap.data();
+    }
+  } catch (e) {
+    console.warn("Could not fetch user data before delete:", e);
+  }
+
+  // 2. Clean up parentViewToken if exists
+  if (userData?.parentViewToken) {
+    try {
+      await withTimeout(deleteDoc(doc(database, "parent_view_tokens", userData.parentViewToken)), 3000)
+        .catch(() => deleteDocViaRest("parent_view_tokens", userData.parentViewToken));
+    } catch {
+      // ignore
+    }
+  }
+
+  // Also clean up any parent_view_tokens linked to this student
+  try {
+    const qTokens = query(collection(database, "parent_view_tokens"), where("studentUid", "==", uid));
+    const tokenSnaps = await withTimeout(getDocs(qTokens), 3000);
+    for (const d of tokenSnaps.docs) {
+      await deleteDoc(d.ref).catch(() => deleteDocViaRest("parent_view_tokens", d.id));
+    }
+  } catch {
+    // ignore
+  }
+
+  // 3. Clean up student summary if exists
+  try {
+    await withTimeout(deleteDoc(doc(database, "student_summaries", uid)), 3000)
+      .catch(() => deleteDocViaRest("student_summaries", uid));
+  } catch {
+    // ignore
+  }
+
+  // 4. Delete user document from users collection
+  // Try client SDK deleteDoc with a 4-second timeout; if it hangs or errors, fall back to direct REST API delete!
+  let deleted = false;
+  try {
+    await withTimeout(deleteDoc(doc(database, "users", uid)), 4000);
+    deleted = true;
+  } catch (err) {
+    console.warn("deleteDoc via SDK failed or timed out, trying REST API fallback...", err);
+  }
+
+  if (!deleted) {
+    const restSuccess = await deleteDocViaRest("users", uid);
+    if (!restSuccess) {
+      throw new Error("ไม่สามารถลบผู้ใช้ออกจากระบบได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต");
+    }
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -1871,17 +1956,6 @@ export async function getStudentSummary(studentUid: string): Promise<StudentSumm
  * - Student ID (when numeric, e.g. "67105")
  * - First Name without prefix (e.g. "สมชาย" finds "เด็กชายสมชาย ใจดี")
  */
-/**
- * Helper with safe timeout for Firestore network calls
- */
-function withTimeout<T>(promise: Promise<T>, ms = 6000): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error("การค้นหาใช้เวลานานเกินไป กรุณาลองใหม่อีกครั้ง")), ms),
-    ),
-  ]);
-}
 
 /**
  * Smart Search for student records across both `users` and `student_summaries` collections by:
