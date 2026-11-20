@@ -16,9 +16,6 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
-    // Admin validation:
-    // 1. Authenticated
-    // 2. Role in users/{uid} is 'admin' OR email in admin_whitelist
     function isAdmin() {
       return isAuthenticated() && (
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().role == 'admin') ||
@@ -27,129 +24,97 @@ service cloud.firestore {
     }
 
     function isTeacher() {
-      return isAuthenticated() && (getUserData().role == 'teacher' || isAdmin());
+      return isAuthenticated() && (
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (getUserData().role == 'teacher' || getUserData().role == 'admin')) ||
+        isAdmin()
+      );
     }
 
-    // =========================================================================
-    // 1. Admin Whitelist Collection
-    // =========================================================================
-    match /admin_whitelist/{email} {
-      // Authenticated users can check whitelist status during registration
-      allow get: if isAuthenticated();
-      // Only validated Admins can list, add, modify, or delete
-      allow list, create, update, delete: if isAdmin();
-    }
-
-    // =========================================================================
-    // 2. Teacher Invites Collection
-    // =========================================================================
-    match /teacher_invites/{code} {
-      // Public single-document get for verifying invite code during teacher registration
-      allow get: if true;
-
-      // Only Admin can view all codes
-      allow list: if isAdmin();
-
-      // Only Admin can create or delete codes
-      allow create, delete: if isAdmin();
-
-      // Update allowed when consuming code during registration (isUsed false -> true and bound to auth.uid)
-      allow update: if isAuthenticated() &&
-        resource.data.isUsed == false &&
-        request.resource.data.isUsed == true &&
-        request.resource.data.usedByUid == request.auth.uid;
-    }
-
-    // =========================================================================
-    // 3. Parent View Tokens Collection (Magic Link)
-    // =========================================================================
-    match /parent_view_tokens/{token} {
-      // Read allowed for anyone with the token (no authentication required)
-      allow read: if true;
-
-      // Creation allowed by authenticated users (during registration or student generating link)
-      allow create: if isAuthenticated();
-
-      // Update and delete allowed for the owning student or admin
-      allow update, delete: if isAuthenticated() &&
-        (resource.data.studentUid == request.auth.uid || isAdmin());
-    }
-
-    // =========================================================================
-    // 4. Users Collection
-    // =========================================================================
+    // 1. ข้อมูลผู้ใช้และสิทธิ์ของครู/แอดมิน (Users)
     match /users/{userId} {
-      // Authenticated users can read profiles, or public can read student profiles for Parent lookups
-      allow read: if isAuthenticated() || resource.data.role == 'student';
-
-      // Create allowed for the authenticated owner
-      allow create: if isUser(userId);
-
-      // Update allowed for the owner or admin
-      allow update: if isUser(userId) || isAdmin();
-
-      // Delete allowed only for admin
+      allow read: if true;
+      allow create: if isUser(userId) || isAdmin();
+      allow update: if isUser(userId) || isAdmin() || isTeacher();
       allow delete: if isAdmin();
     }
 
-    // =========================================================================
-    // 5. Classes, Sessions, Attendance, Assignments, Submissions
-    // =========================================================================
-    match /classes/{classId} {
-      allow read: if isAuthenticated();
-      allow write: if isTeacher();
-    }
-
-    match /sessions/{sessionId} {
-      allow read: if isAuthenticated();
-      allow write: if isTeacher();
-    }
-
-    match /attendance/{attendanceId} {
-      allow read: if isAuthenticated();
-      allow write: if isTeacher();
-    }
-
-    match /assignments/{assignmentId} {
-      allow read: if isAuthenticated();
-      allow write: if isTeacher();
-    }
-
-    match /submissions/{submissionId} {
-      allow read, write: if isAuthenticated();
-    }
-
-    // =========================================================================
-    // 6. Leave Requests (ระบบหนังสือราชการและใบลา TH Sarabun PSK)
-    // =========================================================================
-    match /leave_requests/{requestId} {
-      allow read, create: if isAuthenticated();
-      allow update, delete: if isTeacher();
-    }
-
-    // =========================================================================
-    // 7. Student Summaries (Pre-aggregated for LINE Webhook & Instant View)
-    // =========================================================================
-    match /student_summaries/{studentUid} {
-      // Read allowed for anyone (LINE Webhook & Parent View)
+    // 2. รหัสลงทะเบียนครู (Teacher Invites)
+    match /teacher_invites/{code} {
       allow read: if true;
-      // Write allowed for authenticated teachers, students, admins
       allow write: if isAuthenticated();
     }
 
-    // =========================================================================
-    // 8. Parent LINE Links (LINE User ID to Student Binding)
-    // =========================================================================
+    // 3. จัดการสิทธิ์แอดมิน (Admin Whitelist)
+    match /admin_whitelist/{email} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // 4. ข้อมูลรายชื่อนักเรียน (Students)
+    match /students/{docId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // 5. การผูกบัญชี LINE ของผู้ปกครองกับนักเรียน (Parent Bindings & LINE Links)
+    match /parent_bindings/{lineUserId} {
+      allow read, write: if true;
+    }
     match /parent_line_links/{lineUserId} {
       allow read, write: if true;
     }
+    match /parent_view_tokens/{token} {
+      allow read, write: if true;
+    }
 
-    // =========================================================================
-    // 9. Announcements Collection
-    // =========================================================================
-    match /announcements/{announcementId} {
+    // 6. เช็กชื่อ / การเข้าเรียน / เซสชัน (Attendance, Sessions, Summaries)
+    match /attendance/{docId} {
+      allow read, write: if true;
+    }
+    match /sessions/{sessionId} {
       allow read: if true;
-      allow create, update, delete: if isTeacher();
+      allow write: if isAuthenticated();
+    }
+    match /student_summaries/{studentUid} {
+      allow read, write: if true;
+    }
+
+    // 7. การบ้าน / งานค้าง และการส่งงาน (Assignments & Submissions)
+    match /assignments/{docId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+    match /submissions/{docId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // 8. แจ้งลาเรียน (Leave Requests)
+    match /leave_requests/{docId} {
+      allow read, create: if true;
+      allow update, delete: if isAuthenticated();
+    }
+
+    // 9. ตารางเรียน & ห้องเรียน (Schedules & Classes)
+    match /schedules/{docId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+    match /classes/{docId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // 10. ประกาศจากครู (Announcements)
+    match /announcements/{docId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // 11. ข้อมูลติดต่อครูประจำชั้น (Teachers)
+    match /teachers/{docId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
     }
   }
 }
