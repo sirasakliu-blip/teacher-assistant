@@ -59,7 +59,7 @@ export async function initLiff(customLiffId?: string): Promise<any> {
   const liffId =
     customLiffId ||
     import.meta.env.VITE_LINE_LIFF_ID ||
-    "";
+    "2012726688-SBKhhJZJ";
 
   liffInitPromise = (async () => {
     await loadLiffScript();
