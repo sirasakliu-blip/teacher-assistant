@@ -1,4 +1,5 @@
 {
+  "installCommand": "pnpm install --no-frozen-lockfile",
   "buildCommand": "pnpm --filter @workspace/educonnect360 run build",
   "outputDirectory": "artifacts/educonnect360/dist/public",
   "rewrites": [
