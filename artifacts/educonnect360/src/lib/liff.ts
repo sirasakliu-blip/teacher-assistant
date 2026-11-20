@@ -87,15 +87,20 @@ export async function initLiff(customLiffId?: string): Promise<any> {
 }
 
 /**
- * Checks if the web app is running inside the LINE In-App Browser
+ * Checks if the web app is running inside the LINE In-App Browser / LIFF client
  */
 export function isLiffInClient(): boolean {
-  if (typeof window === "undefined" || !window.liff) return false;
+  if (typeof window === "undefined") return false;
   try {
-    return window.liff.isInClient();
+    if (window.liff && typeof window.liff.isInClient === "function") {
+      return window.liff.isInClient();
+    }
   } catch {
-    return false;
+    // fallback
   }
+  // Secondary check: LINE In-App User-Agent detection (mobile LINE app or Line in-app browser)
+  const ua = window.navigator?.userAgent || "";
+  return /Line\//i.test(ua);
 }
 
 /**

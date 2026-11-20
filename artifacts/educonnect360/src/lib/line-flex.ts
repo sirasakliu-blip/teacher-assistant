@@ -125,9 +125,7 @@ export function buildStudentReportFlexMessage(data: StudentReportData) {
     ],
   }));
 
-  const magicLink = student.parentViewToken
-    ? `${webBaseUrl.replace(/\/$/, "")}/parent-view?token=${student.parentViewToken}`
-    : `${webBaseUrl.replace(/\/$/, "")}/login`;
+  const magicLink = "https://liff.line.me/2012726688-SBKhhJZJ?source=richmenu";
 
   return {
     type: "flex",

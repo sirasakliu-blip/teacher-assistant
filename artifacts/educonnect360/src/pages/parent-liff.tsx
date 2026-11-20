@@ -103,7 +103,12 @@ export default function ParentLiff() {
       try {
         const params = new URLSearchParams(window.location.search);
         const sourceParam = params.get("source");
-        const devParam = params.get("dev") === "true";
+        const isLocalHost =
+          typeof window !== "undefined" &&
+          (window.location.hostname === "localhost" ||
+            window.location.hostname === "127.0.0.1" ||
+            window.location.hostname.endsWith(".local"));
+        const devParam = isLocalHost && params.get("dev") === "true";
         setDevMode(devParam);
 
         const fromRichMenu = sourceParam === "richmenu" || devParam;
@@ -281,6 +286,11 @@ export default function ParentLiff() {
   // =========================================================================
   if (!isInClient && !devMode) {
     const lineOaUrl = "https://line.me/R/ti/p/@school-educonnect";
+    const isLocalHost =
+      typeof window !== "undefined" &&
+      (window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1" ||
+        window.location.hostname.endsWith(".local"));
 
     return (
       <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 flex items-center justify-center p-6">
@@ -291,20 +301,20 @@ export default function ParentLiff() {
 
           <div>
             <span className="px-3 py-1 rounded-full bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">
-              <i className="fa-solid fa-lock mr-1" /> ป้องกันการเข้าถึงจากภายนอก
+              <i className="fa-solid fa-lock mr-1" /> เปิดได้เฉพาะในแอปพลิเคชัน LINE เท่านั้น
             </span>
             <h1 className="text-xl font-bold text-slate-900 mt-3">
-              ไม่สามารถเข้าถึงจากภายนอกได้
+              กรุณาเข้าใช้งานผ่าน LINE
             </h1>
             <p className="text-sm text-slate-600 mt-2 leading-relaxed">
               หน้านี้สงวนสิทธิ์สำหรับผู้ปกครอง โดยกรุณากดเข้าใช้งานผ่านเมนู{" "}
-              <strong className="text-emerald-700">(Rich Menu)</strong> ภายในแอปพลิเคชัน LINE เท่านั้น
+              <strong className="text-emerald-700">(Rich Menu)</strong> หรือเปิดผ่านแอปพลิเคชัน LINE เท่านั้น ไม่อนุญาตให้เปิดผ่านเบราว์เซอร์ภายนอก
             </p>
           </div>
 
           {/* QR Code Section */}
           <div className="p-6 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col items-center space-y-3">
-            <p className="text-xs font-semibold text-slate-700">สแกน QR Code เพื่อเปิดผ่าน LINE</p>
+            <p className="text-xs font-semibold text-slate-700">สแกน QR Code เพื่อเปิดในแอป LINE</p>
             <div className="p-3 bg-white rounded-xl shadow-sm border border-slate-200">
               <QRCodeSVG value={lineOaUrl} size={160} />
             </div>
@@ -318,12 +328,14 @@ export default function ParentLiff() {
             >
               <i className="fa-brands fa-line text-lg" /> เปิดแอปพลิเคชัน LINE
             </a>
-            <a
-              href="/parent-liff?source=richmenu&dev=true"
-              className="text-xs text-slate-400 hover:text-slate-600 block py-1"
-            >
-              [โหมดทดสอบสำหรับผู้ดูแลระบบ / Dev Preview]
-            </a>
+            {isLocalHost && (
+              <a
+                href="/parent-liff?source=richmenu&dev=true"
+                className="text-xs text-slate-400 hover:text-slate-600 block py-1"
+              >
+                [โหมดทดสอบสำหรับผู้ดูแลระบบ / Dev Preview]
+              </a>
+            )}
           </div>
         </div>
       </div>

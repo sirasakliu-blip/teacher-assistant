@@ -6,6 +6,21 @@ const LINE_CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET || "";
 const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || "educonnect360-d5c47";
 const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY || "AIzaSyCSvi6-C3Gar4Fkb9EsxjbR5DVJ44o41AI";
 const WEB_BASE_URL = process.env.WEB_BASE_URL || "https://educonnect-lms.vercel.app";
+const LINE_LIFF_ID = process.env.LINE_LIFF_ID || process.env.VITE_LINE_LIFF_ID || "2012726688-SBKhhJZJ";
+
+function getLiffUrl(tab = "", extraParams = {}) {
+  const query = new URLSearchParams();
+  if (tab) query.set("tab", tab);
+  query.set("source", "richmenu");
+  for (const [k, v] of Object.entries(extraParams)) {
+    if (v) query.set(k, String(v));
+  }
+  const queryString = query.toString() ? `?${query.toString()}` : "";
+  if (LINE_LIFF_ID) {
+    return `https://liff.line.me/${LINE_LIFF_ID}${queryString}`;
+  }
+  return `${WEB_BASE_URL.replace(/\/$/, "")}/parent-liff${queryString}`;
+}
 function normalizeThaiSearchQuery(input) {
   const cleanText = (input || "").trim().replace(/\s+/g, " ");
   const isNumeric = /^\d+$/.test(cleanText);
@@ -244,7 +259,7 @@ function buildStudentReportFlexMessage(studentData, summaryData) {
       }
     ]
   }));
-  const magicLink = student.parentViewToken ? `${WEB_BASE_URL.replace(/\/$/, "")}/parent-view?token=${student.parentViewToken}` : `${WEB_BASE_URL.replace(/\/$/, "")}/login`;
+  const magicLink = getLiffUrl("", student.parentViewToken ? { token: student.parentViewToken } : {});
   const todayFormatted = (/* @__PURE__ */ new Date()).toLocaleDateString("th-TH", {
     year: "numeric",
     month: "short",
@@ -701,7 +716,7 @@ async function handler(req, res) {
         // 0. Richmenu / Quick action: การเข้าเรียน & แจ้งเตือนขาดเรียน
         if (/^(การเข้าเรียน|เช็คชื่อ|เช็คชื่อเข้าเรียน|ประวัติการเรียน|ขาดเรียน|มาเรียน|attendance)$/i.test(text)) {
           const linked = userId ? await firestoreGetDoc("parent_line_links", userId) : null;
-          const targetUrl = `${WEB_BASE_URL}/parent-liff?tab=attendance&source=richmenu`;
+          const targetUrl = getLiffUrl("attendance");
 
           if (linked && linked.studentUid) {
             const summary = await firestoreGetDoc("student_summaries", linked.studentUid);
@@ -878,7 +893,7 @@ async function handler(req, res) {
         // 1. Richmenu / Quick action: การบ้าน & งานค้าง
         if (/^(การบ้าน|งานค้าง|งานที่มอบหมาย|เช็คการบ้าน|homework)$/i.test(text)) {
           const linked = userId ? await firestoreGetDoc("parent_line_links", userId) : null;
-          const targetUrl = `${WEB_BASE_URL}/parent-liff?tab=assignments&source=richmenu`;
+          const targetUrl = getLiffUrl("assignments");
           await sendLineReply(replyToken, [
             {
               type: "flex",
@@ -939,7 +954,7 @@ async function handler(req, res) {
         // 2. Richmenu / Quick action: แจ้งลาเรียน / ประวัติการลา
         if (/^(แจ้งลา|แจ้งลาเรียน|ลาเรียน|ใบลา|ขอลากิจ|ลาป่วย|ประวัติการลา|leave)$/i.test(text)) {
           const linked = userId ? await firestoreGetDoc("parent_line_links", userId) : null;
-          const targetUrl = `${WEB_BASE_URL}/parent-liff?tab=leave&source=richmenu`;
+          const targetUrl = getLiffUrl("leave");
           await sendLineReply(replyToken, [
             {
               type: "flex",
@@ -998,7 +1013,7 @@ async function handler(req, res) {
         // 3. Richmenu / Quick action: ตารางเรียน
         if (/^(ตารางเรียน|ตารางสอน|คาบเรียน|ตาราง|schedule)$/i.test(text)) {
           const linked = userId ? await firestoreGetDoc("parent_line_links", userId) : null;
-          const targetUrl = `${WEB_BASE_URL}/parent-liff?tab=schedule&source=richmenu`;
+          const targetUrl = getLiffUrl("schedule");
           await sendLineReply(replyToken, [
             {
               type: "flex",
@@ -1057,7 +1072,7 @@ async function handler(req, res) {
         // 4. Richmenu / Quick action: ประกาศข่าวสารจากครู
         if (/^(ประกาศ|ข่าวสาร|ข่าวประชาสัมพันธ์|announcement|announcements)$/i.test(text)) {
           const linked = userId ? await firestoreGetDoc("parent_line_links", userId) : null;
-          const targetUrl = `${WEB_BASE_URL}/parent-liff?tab=announcements&source=richmenu`;
+          const targetUrl = getLiffUrl("announcements");
           await sendLineReply(replyToken, [
             {
               type: "flex",
@@ -1116,7 +1131,7 @@ async function handler(req, res) {
         // 5. Richmenu / Quick action: ติดต่อครูประจำชั้น
         if (/^(ติดต่อครู|ติดต่อครูประจำชั้น|เบอร์ครู|ครูที่ปรึกษา|เบอร์โทรครู|เบอร์คุณครู|contact)$/i.test(text)) {
           const linked = userId ? await firestoreGetDoc("parent_line_links", userId) : null;
-          const targetUrl = `${WEB_BASE_URL}/parent-liff?tab=contact&source=richmenu`;
+          const targetUrl = getLiffUrl("contact");
 
           let advisorInfo = null;
           if (linked && linked.studentUid) {
