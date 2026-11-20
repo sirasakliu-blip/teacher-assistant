@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "wouter";
+import { Link, useParams, useLocation } from "wouter";
 import { QRCodeSVG } from "qrcode.react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import {
   getClassAttendanceRate,
   getClassById,
+  deleteClass,
   getOrCreateTodaySession,
   getTodaySessionForClass,
   subscribeSessionAttendance,
@@ -20,6 +21,7 @@ type TabId = "overview" | "assignments";
 
 export default function TeacherClass() {
   const { classId } = useParams<{ classId: string }>();
+  const [, setLocation] = useLocation();
   const { profile } = useAuth();
   const { toast } = useToast();
   const [cls, setCls] = useState<Class | null>(null);
@@ -30,6 +32,8 @@ export default function TeacherClass() {
   const [starting, setStarting] = useState(false);
   const [tab, setTab] = useState<TabId>("overview");
   const [showAddStudent, setShowAddStudent] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
@@ -88,6 +92,26 @@ export default function TeacherClass() {
     }
   }
 
+  async function handleDeleteClass() {
+    if (!cls) return;
+    setDeleting(true);
+    try {
+      await deleteClass(cls.id);
+      toast({
+        title: "ลบห้องเรียนสำเร็จ",
+        description: `ลบห้องเรียน "${cls.name}" ออกจากระบบเรียบร้อยแล้ว`,
+      });
+      setLocation("/teacher");
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "ลบห้องเรียนไม่สำเร็จ",
+        description: err instanceof Error ? err.message : undefined,
+      });
+      setDeleting(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-[100dvh] w-full bg-background flex items-center justify-center">
@@ -124,6 +148,15 @@ export default function TeacherClass() {
           <i className="fa-solid fa-arrow-left" /> ห้องเรียนของฉัน
         </Link>
         <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => setShowDeleteConfirm(true)}
+            className="px-3.5 py-1.5 rounded-full border border-rose-300 bg-rose-50/60 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:border-rose-900/60 dark:text-rose-400 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+            title="ลบห้องเรียนนี้"
+          >
+            <i className="fa-solid fa-trash-can text-xs" />
+            ลบห้องเรียน
+          </button>
           <button
             onClick={() => setShowAddStudent(true)}
             className="px-3.5 py-1.5 rounded-full bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold transition flex items-center gap-1.5"
@@ -267,6 +300,57 @@ export default function TeacherClass() {
           setCls(found);
         }}
       />
+
+      {/* Delete Class Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in"
+          onClick={() => !deleting && setShowDeleteConfirm(false)}
+        >
+          <div
+            className="rounded-3xl p-6 sm:p-8 w-full max-w-sm bg-card text-card-foreground border border-border shadow-2xl relative z-10 text-center space-y-4 animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-16 h-16 rounded-2xl bg-rose-50 text-rose-600 dark:bg-rose-950/50 mx-auto flex items-center justify-center text-2xl shadow-inner">
+              <i className="fa-solid fa-trash-can" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-foreground">ต้องการลบห้องเรียนนี้?</h3>
+              <p className="text-sm font-semibold text-primary mt-1">{cls.name}</p>
+              <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+                ระดับชั้น: {cls.gradeLevel || "-"} &middot; นักเรียน {cls.studentIds?.length || 0} คน<br />
+                การลบห้องเรียนจะไม่ลบรายชื่อนักเรียนออกจากโรงเรียน แต่จะยกเลิกห้องเรียนนี้และสถิติต่างๆ ทันที
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-border">
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => setShowDeleteConfirm(false)}
+                className="py-2.5 px-4 rounded-xl border border-border text-foreground hover:bg-muted text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={handleDeleteClass}
+                className="py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition shadow-md shadow-rose-600/25 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {deleting ? (
+                  <>
+                    <i className="fa-solid fa-circle-notch fa-spin text-xs" /> กำลังลบ...
+                  </>
+                ) : (
+                  <>
+                    <i className="fa-solid fa-trash-can text-xs" /> ยืนยันลบ
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

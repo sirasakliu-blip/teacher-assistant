@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { getClassesForTeacher } from "@/lib/firestore";
+import { getClassesForTeacher, deleteClass } from "@/lib/firestore";
 import { coverGradient } from "@/lib/covers";
 import { TeacherNav } from "@/components/teacher-nav";
 import { CreateStudentDialog } from "@/components/create-student-dialog";
@@ -22,8 +22,32 @@ export default function TeacherHome() {
   const [showContactModal, setShowContactModal] = useState(false);
   const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
   const [scheduleViewTab, setScheduleViewTab] = useState<"teaching" | "advisor">("teaching");
+  const [classToDelete, setClassToDelete] = useState<Class | null>(null);
+  const [deletingClass, setDeletingClass] = useState(false);
 
   const advisorRoom = profile?.advisorRoom || profile?.gradeLevel || "ม.2/1";
+
+  async function handleConfirmDeleteClass() {
+    if (!classToDelete) return;
+    setDeletingClass(true);
+    try {
+      await deleteClass(classToDelete.id);
+      toast({
+        title: "ลบห้องเรียนสำเร็จ",
+        description: `ลบห้องเรียน "${classToDelete.name}" ออกจากระบบเรียบร้อยแล้ว`,
+      });
+      setClassToDelete(null);
+      await refresh();
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "ลบห้องเรียนไม่สำเร็จ",
+        description: err instanceof Error ? err.message : undefined,
+      });
+    } finally {
+      setDeletingClass(false);
+    }
+  }
 
   async function refresh() {
     if (!profile) return;
@@ -268,6 +292,19 @@ export default function TeacherHome() {
                   <div className="absolute inset-0 flex items-center justify-center">
                     <i className="fa-solid fa-graduation-cap text-3xl text-white/30 group-hover:scale-110 transition-transform duration-500" />
                   </div>
+                  {/* Delete class button on top-left of card */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setClassToDelete(cls);
+                    }}
+                    title="ลบห้องเรียนนี้"
+                    className="absolute top-3 left-3 w-8 h-8 rounded-full bg-black/40 hover:bg-rose-600 text-white flex items-center justify-center transition backdrop-blur-md cursor-pointer opacity-80 hover:opacity-100 shadow-sm"
+                  >
+                    <i className="fa-solid fa-trash-can text-xs" />
+                  </button>
                   <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-black/20 backdrop-blur-md text-white text-[11px] font-mono font-medium">
                     {cls.code}
                   </div>
@@ -285,9 +322,23 @@ export default function TeacherHome() {
                       <i className="fa-solid fa-users" />
                       {cls.studentIds?.length || 0} คน
                     </span>
-                    <span className="font-semibold text-primary flex items-center gap-1 group-hover:translate-x-1 transition-transform">
-                      จัดการห้องเรียน <i className="fa-solid fa-arrow-right text-[10px]" />
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setClassToDelete(cls);
+                        }}
+                        className="p-1 rounded-md text-muted-foreground hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer"
+                        title="ลบห้องเรียนนี้"
+                      >
+                        <i className="fa-solid fa-trash-can text-xs" />
+                      </button>
+                      <span className="font-semibold text-primary flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                        จัดการห้องเรียน <i className="fa-solid fa-arrow-right text-[10px]" />
+                      </span>
+                    </div>
                   </div>
                 </div>
               </Link>
@@ -295,6 +346,57 @@ export default function TeacherHome() {
           </div>
         )}
       </main>
+
+      {/* Delete Class Confirmation Modal */}
+      {classToDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in"
+          onClick={() => !deletingClass && setClassToDelete(null)}
+        >
+          <div
+            className="rounded-3xl p-6 sm:p-8 w-full max-w-sm bg-card text-card-foreground border border-border shadow-2xl relative z-10 text-center space-y-4 animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-16 h-16 rounded-2xl bg-rose-50 text-rose-600 dark:bg-rose-950/50 mx-auto flex items-center justify-center text-2xl shadow-inner">
+              <i className="fa-solid fa-trash-can" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-foreground">ต้องการลบห้องเรียน?</h3>
+              <p className="text-sm font-semibold text-primary mt-1">{classToDelete.name}</p>
+              <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+                ระดับชั้น: {classToDelete.gradeLevel || "-"} &middot; นักเรียน {classToDelete.studentIds?.length || 0} คน<br />
+                การลบห้องเรียนจะไม่ลบรายชื่อนักเรียนออกจากโรงเรียน แต่จะยกเลิกห้องเรียนนี้ทันที
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-border">
+              <button
+                type="button"
+                disabled={deletingClass}
+                onClick={() => setClassToDelete(null)}
+                className="py-2.5 px-4 rounded-xl border border-border text-foreground hover:bg-muted text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                disabled={deletingClass}
+                onClick={handleConfirmDeleteClass}
+                className="py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition shadow-md shadow-rose-600/25 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {deletingClass ? (
+                  <>
+                    <i className="fa-solid fa-circle-notch fa-spin text-xs" /> กำลังลบ...
+                  </>
+                ) : (
+                  <>
+                    <i className="fa-solid fa-trash-can text-xs" /> ยืนยันลบ
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <CreateClassModal
         open={showCreateClass}

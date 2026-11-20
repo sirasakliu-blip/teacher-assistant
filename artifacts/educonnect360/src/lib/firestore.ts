@@ -341,6 +341,11 @@ export async function getClassById(classId: string): Promise<Class | null> {
   return mapClassDoc(snap.id, snap.data());
 }
 
+export async function deleteClass(classId: string): Promise<void> {
+  const database = requireDb();
+  await deleteDoc(doc(database, "classes", classId));
+}
+
 export async function joinClassByCode(
   joinCode: string,
   studentId: string,
