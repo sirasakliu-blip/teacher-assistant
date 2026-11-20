@@ -570,7 +570,7 @@ export default function Register() {
               {/* รหัสลงทะเบียนบุคลากร */}
               <div>
                 <label className="block text-xs font-semibold text-foreground mb-1.5 flex items-center justify-between">
-                  <span>รหัสลงทะเบียนบุคลากร (Teacher Invite Code)</span>
+                  <span>รหัสลงทะเบียนบุคลากร</span>
                   <span className="text-[11px] font-normal text-muted-foreground">ใช้ได้ 1 ครั้ง</span>
                 </label>
                 <div className="relative">
@@ -579,13 +579,13 @@ export default function Register() {
                     required
                     value={inviteCode}
                     onChange={(e) => setInviteCode(e.target.value.toUpperCase().replace(/\s+/g, ""))}
-                    placeholder="เช่น TCH-XXXX-XX"
+                    placeholder="กรุณาเอารหัสที่ได้จาก Admin มากรอกตรงนี้"
                     className="w-full px-4 py-2.5 rounded-xl bg-primary/5 border border-primary/30 focus:outline-none focus:ring-2 focus:ring-primary text-foreground font-mono uppercase tracking-wider placeholder:normal-case placeholder:tracking-normal placeholder:font-sans placeholder:text-muted-foreground/60 text-sm"
                   />
                   <i className="fa-solid fa-key absolute right-3.5 top-3 text-muted-foreground/60 text-xs" />
                 </div>
                 <p className="text-[11px] text-muted-foreground mt-1">
-                  รหัสลงทะเบียนครูขึ้นต้นด้วย <span className="font-mono font-semibold text-primary">TCH-</span> ขอรับได้จากผู้ดูแลระบบสถานศึกษา (Admin)
+                  กรุณาเอารหัสที่ได้จาก Admin มากรอกตรงนี้ (ขอรับได้จากผู้ดูแลระบบสถานศึกษา)
                 </p>
               </div>
             </div>

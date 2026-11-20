@@ -258,7 +258,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Check prefix isolation: Teachers cannot register here with TCH-
     if (cleanKey.startsWith("TCH-")) {
-      throw new Error("รหัสขึ้นต้นด้วย TCH- เป็นรหัสลงทะเบียนสำหรับครู ไม่สามารถใช้ลงทะเบียนผู้ดูแลระบบได้ กรุณาใช้รหัส ADM- หรือติดต่อผู้ดูแลระบบ");
+      throw new Error("รหัสนี้เป็นรหัสลงทะเบียนสำหรับครู ไม่สามารถใช้ลงทะเบียนผู้ดูแลระบบได้ กรุณาติดต่อผู้ดูแลระบบ");
     }
 
     const MASTER_KEYS = ["ADMIN2026", "EDUCONNECT-ADMIN", "ADMIN-360", "ADM-0000", "0000", "ADMIN"];
@@ -324,7 +324,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Check prefix isolation: Teachers cannot register here with TCH-
     if (cleanKey.startsWith("TCH-")) {
-      throw new Error("รหัสขึ้นต้นด้วย TCH- เป็นรหัสลงทะเบียนสำหรับครู ไม่สามารถใช้ลงทะเบียนผู้ดูแลระบบได้ กรุณาใช้รหัส ADM- หรือติดต่อผู้ดูแลระบบ");
+      throw new Error("รหัสนี้เป็นรหัสลงทะเบียนสำหรับครู ไม่สามารถใช้ลงทะเบียนผู้ดูแลระบบได้ กรุณาติดต่อผู้ดูแลระบบ");
     }
 
     // Check valid master security keys, whitelisted email, or admin invite code
@@ -457,7 +457,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Check prefix isolation: Admins cannot register here with ADM-
     if (cleanCode.startsWith("ADM-")) {
-      throw new Error("รหัสขึ้นต้นด้วย ADM- เป็นรหัสความปลอดภัยสำหรับผู้ดูแลระบบ (Admin) ไม่สามารถใช้ลงทะเบียนครูได้ กรุณาใช้รหัส TCH- หรือลงทะเบียนที่หน้าระบบแอดมิน");
+      throw new Error("รหัสนี้เป็นรหัสความปลอดภัยสำหรับผู้ดูแลระบบ ไม่สามารถใช้ลงทะเบียนครูได้");
     }
 
     const inviteRef = doc(db, "teacher_invites", cleanCode);
@@ -527,7 +527,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Check prefix isolation: Admins cannot register here with ADM-
     if (cleanCode.startsWith("ADM-")) {
-      throw new Error("รหัสขึ้นต้นด้วย ADM- เป็นรหัสความปลอดภัยสำหรับผู้ดูแลระบบ (Admin) ไม่สามารถใช้ลงทะเบียนครูได้ กรุณาใช้รหัส TCH- หรือลงทะเบียนที่หน้าระบบแอดมิน");
+      throw new Error("รหัสนี้เป็นรหัสความปลอดภัยสำหรับผู้ดูแลระบบ ไม่สามารถใช้ลงทะเบียนครูได้");
     }
 
     const inviteRef = doc(db, "teacher_invites", cleanCode);

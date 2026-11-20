@@ -509,7 +509,7 @@ export default function AdminRegister() {
               </div>
             </div>
 
-            {/* รหัสความปลอดภัยผู้ดูแลระบบ (Admin Security Key แทน .ac.th) */}
+            {/* รหัสความปลอดภัยผู้ดูแลระบบ (Admin Security Key) */}
             <div>
               <label className="block text-xs font-semibold text-foreground mb-1.5 flex items-center justify-between">
                 <span>รหัสความปลอดภัยผู้ดูแลระบบ (Admin Security Key)</span>
@@ -521,13 +521,13 @@ export default function AdminRegister() {
                   required
                   value={securityKey}
                   onChange={(e) => setSecurityKey(e.target.value.replace(/\s+/g, ""))}
-                  placeholder="เช่น ADM-XXXX-XX หรือรหัสความปลอดภัยของโรงเรียน"
+                  placeholder="กรุณาเอารหัสที่ได้จาก Admin มากรอกตรงนี้"
                   className="w-full px-4 py-2.5 rounded-xl bg-primary/5 border border-primary/30 focus:outline-none focus:ring-2 focus:ring-primary text-foreground font-mono uppercase tracking-wider placeholder:normal-case placeholder:tracking-normal placeholder:font-sans placeholder:text-muted-foreground/60 text-sm"
                 />
                 <i className="fa-solid fa-key absolute right-3.5 top-3 text-muted-foreground/60 text-xs" />
               </div>
               <p className="text-[11px] text-muted-foreground mt-1">
-                รหัสความปลอดภัยผู้ดูแลระบบขึ้นต้นด้วย <span className="font-mono font-semibold text-primary">ADM-</span> หรือรหัสตั้งต้น <code className="font-mono text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded">ADMIN2026</code> (แยกเฉพาะจากรหัสครูที่ขึ้นต้นด้วย TCH-)
+                กรุณาเอารหัสที่ได้จาก Admin มากรอกตรงนี้ (รหัสความปลอดภัยเฉพาะผู้ดูแลระบบสถานศึกษา)
               </p>
             </div>
 
