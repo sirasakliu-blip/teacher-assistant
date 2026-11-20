@@ -7,6 +7,28 @@ const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || process.env.VITE_
 const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY || "AIzaSyCSvi6-C3Gar4Fkb9EsxjbR5DVJ44o41AI";
 const WEB_BASE_URL = process.env.WEB_BASE_URL || "https://teacher-assistant-lilac.vercel.app";
 const LINE_LIFF_ID = process.env.LINE_LIFF_ID || process.env.VITE_LINE_LIFF_ID || "2012726688-SBKhhJZJ";
+const LANGMIND_WEBHOOK_URL = process.env.LANGMIND_WEBHOOK_URL || "";
+
+async function forwardToLangMind(headers, payload, targetUrl) {
+  const endpoint = targetUrl || LANGMIND_WEBHOOK_URL;
+  if (!endpoint) return false;
+  try {
+    const fHeaders = { "Content-Type": "application/json" };
+    if (headers && headers["x-line-signature"]) {
+      fHeaders["x-line-signature"] = headers["x-line-signature"];
+    }
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: fHeaders,
+      body: typeof payload === "string" ? payload : JSON.stringify(payload)
+    });
+    console.log(`Forwarded event to LangMind (${endpoint}): status ${res.status}`);
+    return res.ok;
+  } catch (err) {
+    console.error("Error forwarding event to LangMind:", err);
+    return false;
+  }
+}
 
 function getLiffUrl(tab = "", extraParams = {}) {
   const query = new URLSearchParams();
@@ -679,11 +701,43 @@ async function handler(req, res) {
       return res.status(401).json({ error: "Invalid signature" });
     }
   }
+  // Check LangMind config from system_settings if not in env
+  let langmindEndpoint = LANGMIND_WEBHOOK_URL;
+  try {
+    const lmSettings = await firestoreGetDoc("system_settings", "langmind");
+    if (lmSettings && lmSettings.enabled !== false && lmSettings.webhookUrl) {
+      langmindEndpoint = lmSettings.webhookUrl.trim();
+    }
+  } catch (e) {
+    console.warn("Could not read langmind config from Firestore:", e);
+  }
+
   const events = req.body?.events || [];
   for (const event of events) {
     const replyToken = event.replyToken;
     const userId = event.source?.userId;
+    const isGroup = event.source?.type === "group" || event.source?.type === "room";
+    const groupId = event.source?.groupId || event.source?.roomId;
+
     if (!replyToken) continue;
+
+    // 1. Event: Bot joined group or multi-person room
+    if (event.type === "join") {
+      try {
+        await sendLineReply(replyToken, [
+          {
+            type: "text",
+            text: "สวัสดีครับทุกคนในกลุ่ม! 👋 ยินดีที่ได้เข้าร่วมกลุ่มครับ\n\nบอท EduConnect360 และ AI LangMind พร้อมให้บริการข้อมูลนักเรียน ตารางเรียน และตอบคำถามในกลุ่มแล้วครับ ✨"
+          }
+        ]);
+        if (langmindEndpoint) {
+          await forwardToLangMind(req.headers, { destination: req.body?.destination, events: [event] }, langmindEndpoint);
+        }
+      } catch (jErr) {
+        console.error("Error replying to join event:", jErr);
+      }
+      continue;
+    }
     try {
       if (event.type === "message" && event.message?.type === "text") {
         const text = (event.message.text || "").trim();
@@ -1248,14 +1302,30 @@ async function handler(req, res) {
         }
         const students = await findStudents(text);
         if (students.length === 0) {
+          // 1. If LangMind Webhook is configured, forward this event to LangMind AI!
+          if (langmindEndpoint) {
+            const forwarded = await forwardToLangMind(req.headers, { destination: req.body?.destination, events: [event] }, langmindEndpoint);
+            if (forwarded) continue;
+          }
+
+          // 2. If in group chat: DO NOT spam "ไม่พบข้อมูลนักเรียน" when people chat normally!
+          if (isGroup) {
+            if (/^(ai|langmind|บอท|ถาม|@|\?|ช่วย)/i.test(text)) {
+              await sendLineReply(replyToken, [
+                {
+                  type: "text",
+                  text: "🤖 สวัสดีครับ! ขณะนี้ระบบในกลุ่มพร้อมเชื่อมกับ AI LangMind แล้ว\n\n📌 แอดมินหรือคุณครูสามารถนำ Webhook URL ของ AI LangMind มาใส่ใน Admin Console หรือตั้งค่า LANGMIND_WEBHOOK_URL เพื่อให้ AI ช่วยตอบคำถามประจำโรงเรียนในกลุ่มนี้ได้ทันทีครับ ✨"
+                }
+              ]);
+            }
+            continue;
+          }
+
+          // 3. In 1-on-1 private chat: Guide parent how to search
           await sendLineReply(replyToken, [
             {
               type: "text",
-              text: `\u0E02\u0E2D\u0E2D\u0E20\u0E31\u0E22\u0E04\u0E23\u0E31\u0E1A \u0E44\u0E21\u0E48\u0E1E\u0E1A\u0E02\u0E49\u0E2D\u0E21\u0E39\u0E25\u0E19\u0E31\u0E01\u0E40\u0E23\u0E35\u0E22\u0E19\u0E17\u0E35\u0E48\u0E15\u0E23\u0E07\u0E01\u0E31\u0E1A "${text}" \u274C
-
-\u{1F4A1} \u0E04\u0E33\u0E41\u0E19\u0E30\u0E19\u0E33\u0E2A\u0E33\u0E2B\u0E23\u0E31\u0E1A\u0E1C\u0E39\u0E49\u0E1B\u0E01\u0E04\u0E23\u0E2D\u0E07:
-\u2022 \u0E25\u0E2D\u0E07\u0E1E\u0E34\u0E21\u0E1E\u0E4C\u0E40\u0E09\u0E1E\u0E32\u0E30 **\u0E0A\u0E37\u0E48\u0E2D\u0E08\u0E23\u0E34\u0E07** (\u0E44\u0E21\u0E48\u0E15\u0E49\u0E2D\u0E07\u0E43\u0E2A\u0E48\u0E19\u0E32\u0E21\u0E2A\u0E01\u0E38\u0E25 \u0E40\u0E0A\u0E48\u0E19 "\u0E2A\u0E21\u0E0A\u0E32\u0E22")
-\u2022 \u0E2B\u0E23\u0E37\u0E2D\u0E1E\u0E34\u0E21\u0E1E\u0E4C **\u0E23\u0E2B\u0E31\u0E2A\u0E19\u0E31\u0E01\u0E40\u0E23\u0E35\u0E22\u0E19** (\u0E40\u0E0A\u0E48\u0E19 "67105")`
+              text: `ขออภัยครับ ไม่พบข้อมูลนักเรียนที่ตรงกับ "${text}" ❌\n\n💡 คำแนะนำสำหรับผู้ปกครอง:\n• ลองพิมพ์เฉพาะ **ชื่อจริง** (ไม่ต้องใส่นามสกุล เช่น "สมชาย")\n• หรือพิมพ์ **รหัสนักเรียน** (เช่น "67105")`
             }
           ]);
         } else if (students.length === 1) {

@@ -22,6 +22,8 @@ import {
   assignClassAdvisor,
   deduplicateClasses,
   deleteClass,
+  getLangMindConfig,
+  saveLangMindConfig,
 } from "@/lib/firestore";
 import { parseExcelOrCsv, exportToExcel } from "@/lib/excel-helper";
 import { CreateStudentDialog } from "@/components/create-student-dialog";
@@ -34,8 +36,14 @@ export default function AdminDashboard() {
   const { toast } = useToast();
 
   const [activeTab, setActiveTab] = useState<
-    "invites" | "whitelist" | "users" | "schedules" | "import-students" | "classes"
+    "invites" | "whitelist" | "users" | "schedules" | "import-students" | "classes" | "langmind"
   >("invites");
+
+  // Tab: LangMind Integration state
+  const [langmindUrl, setLangmindUrl] = useState("");
+  const [langmindEnabled, setLangmindEnabled] = useState(true);
+  const [loadingLangmind, setLoadingLangmind] = useState(false);
+  const [savingLangmind, setSavingLangmind] = useState(false);
 
   // Tab 1: Teacher Invites state
   const [invites, setInvites] = useState<TeacherInvite[]>([]);
@@ -200,8 +208,46 @@ export default function AdminDashboard() {
     } else if (activeTab === "classes") {
       loadSchoolClasses();
       if (users.length === 0) loadUsersAndTokens();
+    } else if (activeTab === "langmind") {
+      loadLangMind();
     }
   }, [activeTab]);
+
+  async function loadLangMind() {
+    setLoadingLangmind(true);
+    try {
+      const cfg = await getLangMindConfig();
+      setLangmindUrl(cfg.webhookUrl || "");
+      setLangmindEnabled(cfg.enabled !== false);
+    } catch (err) {
+      console.error("loadLangMind error:", err);
+    } finally {
+      setLoadingLangmind(false);
+    }
+  }
+
+  async function handleSaveLangMind(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingLangmind(true);
+    try {
+      await saveLangMindConfig({
+        webhookUrl: langmindUrl.trim(),
+        enabled: langmindEnabled,
+      });
+      toast({
+        title: "บันทึกการตั้งค่า AI LangMind สำเร็จ",
+        description: "บอท LINE OA จะส่งต่อคำถามในกลุ่มและแชทไปยัง AI LangMind โดยอัตโนมัติแล้วครับ",
+      });
+    } catch (err: any) {
+      toast({
+        variant: "destructive",
+        title: "บันทึกไม่สำเร็จ",
+        description: err.message || "เกิดข้อผิดพลาดในการบันทึกข้อมูล",
+      });
+    } finally {
+      setSavingLangmind(false);
+    }
+  }
 
   async function loadWhitelist() {
     setLoadingWhitelist(true);
@@ -929,6 +975,18 @@ export default function AdminDashboard() {
           >
             <i className="fa-solid fa-file-excel" />
             <span>นำเข้ารายชื่อนักเรียน &amp; จัดห้องเรียน (Excel)</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("langmind")}
+            className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition cursor-pointer ${
+              activeTab === "langmind"
+                ? "border-purple-600 text-purple-700 font-semibold"
+                : "border-transparent text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            <i className="fa-solid fa-brain text-purple-600" />
+            <span>AI LangMind &amp; LINE กลุ่ม</span>
           </button>
         </div>
 
@@ -2026,6 +2084,157 @@ export default function AdminDashboard() {
                   </table>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 7: LANGMIND AI & LINE GROUP INTEGRATION */}
+        {activeTab === "langmind" && (
+          <div className="space-y-6 animate-fade-in">
+            {/* Header & Status Card */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                    <span className="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center text-sm">
+                      <i className="fa-solid fa-brain" />
+                    </span>
+                    เชื่อมต่อ AI LangMind กับ LINE OA (กลุ่มและแชทส่วนตัว)
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-1">
+                    ระบบจะส่งต่อข้อความการสนทนาและคำถามในกลุ่มไปยัง AI Agent ของ LangMind เพื่อตอบคำถามอัตโนมัติตามเอกสารของสถานศึกษา
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
+                      langmindUrl && langmindEnabled
+                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                        : "bg-slate-100 text-slate-600 border border-slate-200"
+                    }`}
+                  >
+                    <span
+                      className={`w-2 h-2 rounded-full ${
+                        langmindUrl && langmindEnabled ? "bg-emerald-500 animate-pulse" : "bg-slate-400"
+                      }`}
+                    />
+                    {langmindUrl && langmindEnabled ? "เชื่อมต่อ AI แล้ว" : "ยังไม่ได้ระบุ Webhook URL"}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Webhook Configuration Form */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm">
+              <form onSubmit={handleSaveLangMind} className="space-y-5">
+                <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                  <i className="fa-solid fa-link text-purple-600" />
+                  <h3 className="text-sm font-bold text-slate-800">ตั้งค่า LangMind Webhook Endpoint</h3>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center justify-between">
+                    <span>LangMind Webhook URL (จาก langmind.in.th)</span>
+                    <span className="text-[11px] text-purple-600 font-normal">เช่น https://api.langmind.in.th/webhook/...</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="url"
+                      value={langmindUrl}
+                      onChange={(e) => setLangmindUrl(e.target.value)}
+                      placeholder="วาง Webhook URL ของ AI Agent จาก LangMind ที่นี่..."
+                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 transition"
+                    />
+                    <i className="fa-solid fa-globe absolute right-3.5 top-3.5 text-slate-400 text-xs pointer-events-none" />
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    คัดลอก Webhook URL มาจากหน้าจัดการ AI Agent บน LangMind (Channels &gt; LINE)
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-3 pt-1">
+                  <input
+                    type="checkbox"
+                    id="enable-langmind"
+                    checked={langmindEnabled}
+                    onChange={(e) => setLangmindEnabled(e.target.checked)}
+                    className="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 border-slate-300"
+                  />
+                  <label htmlFor="enable-langmind" className="text-xs font-semibold text-slate-700 cursor-pointer">
+                    เปิดใช้งาน AI LangMind ตอบคำถามในกลุ่มและแชท LINE OA อัตโนมัติ
+                  </label>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    disabled={savingLangmind}
+                    className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs sm:text-sm font-semibold shadow-sm transition disabled:opacity-50 inline-flex items-center gap-2 cursor-pointer"
+                  >
+                    {savingLangmind ? (
+                      <>
+                        <i className="fa-solid fa-circle-notch fa-spin text-xs" />
+                        <span>กำลังบันทึก...</span>
+                      </>
+                    ) : (
+                      <>
+                        <i className="fa-solid fa-floppy-disk" />
+                        <span>บันทึกการตั้งค่า LangMind</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* Step-by-Step Guide for LINE Group Chat */}
+            <div className="bg-gradient-to-br from-purple-50/60 to-indigo-50/40 rounded-2xl border border-purple-200/70 p-6 shadow-sm space-y-4">
+              <div className="flex items-center gap-2 pb-2 border-b border-purple-200/50">
+                <i className="fa-solid fa-users text-purple-700 text-base" />
+                <h3 className="text-sm font-bold text-slate-900">
+                  คู่มือตั้งค่า: วิธีดึง LINE OA และ AI LangMind เข้าหน้าคุยในกลุ่ม
+                </h3>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-white p-4 rounded-xl border border-purple-100 shadow-xs space-y-2">
+                  <div className="w-7 h-7 rounded-lg bg-purple-600 text-white flex items-center justify-center font-bold text-xs">
+                    1
+                  </div>
+                  <h4 className="text-xs font-bold text-slate-800">เปิดอนุญาตให้บอทเข้ากลุ่ม</h4>
+                  <p className="text-[11px] text-slate-600 leading-relaxed">
+                    เข้าสู่ <strong>LINE Official Account Manager</strong> (chat.line.biz) &gt; ไปที่ <strong>การตั้งค่า (Settings)</strong> &gt; <strong>การตั้งค่าการตอบกลับ</strong> &gt; ติ๊กเลือก <strong>"อนุญาตให้บัญชีเข้าร่วมกลุ่มและแชทหลายคน"</strong>
+                  </p>
+                </div>
+
+                <div className="bg-white p-4 rounded-xl border border-purple-100 shadow-xs space-y-2">
+                  <div className="w-7 h-7 rounded-lg bg-purple-600 text-white flex items-center justify-center font-bold text-xs">
+                    2
+                  </div>
+                  <h4 className="text-xs font-bold text-slate-800">ใส่ Webhook URL ด้านบน</h4>
+                  <p className="text-[11px] text-slate-600 leading-relaxed">
+                    นำ Webhook URL ของ Agent ที่สร้างบน <strong>langmind.in.th</strong> มาวางลงในช่องด้านบน แล้วกด <strong>"บันทึกการตั้งค่า"</strong>
+                  </p>
+                </div>
+
+                <div className="bg-white p-4 rounded-xl border border-purple-100 shadow-xs space-y-2">
+                  <div className="w-7 h-7 rounded-lg bg-purple-600 text-white flex items-center justify-center font-bold text-xs">
+                    3
+                  </div>
+                  <h4 className="text-xs font-bold text-slate-800">เชิญ LINE OA เข้ากลุ่ม</h4>
+                  <p className="text-[11px] text-slate-600 leading-relaxed">
+                    เปิดแอป LINE ในมือถือ เข้าห้องกลุ่มที่ต้องการ กด <strong>"เชิญเพื่อน"</strong> แล้วเลือกบัญชี LINE Official Account ของโรงเรียนเข้ากลุ่มได้ทันที!
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-white/80 p-3.5 rounded-xl border border-purple-100 text-xs text-slate-600 flex items-start gap-2.5">
+                <i className="fa-solid fa-circle-check text-emerald-600 mt-0.5 text-sm shrink-0" />
+                <div className="leading-relaxed">
+                  <strong className="text-slate-800 font-semibold">ระบบ Dual-Engine ทำงานอัตโนมัติ:</strong>{" "}
+                  เมื่อมีคนพิมพ์รหัสนักเรียนหรือกดเมนู ระบบ EduConnect360 จะดึงผลการเรียน/เช็คชื่อให้ทันที และเมื่อมีสมาชิกในกลุ่มพิมพ์ถามคำถามทั่วไป ระบบจะส่งต่อไปให้ <strong>AI LangMind</strong> ดึงคำตอบจากเอกสารโรงเรียนมาตอบให้อัตโนมัติโดยไม่รบกวนการคุยปกติในกลุ่ม
+                </div>
+              </div>
             </div>
           </div>
         )}

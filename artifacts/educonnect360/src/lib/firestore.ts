@@ -3977,3 +3977,36 @@ export async function saveTeacherSchedule(
   });
 }
 
+export interface LangMindConfig {
+  webhookUrl: string;
+  enabled: boolean;
+  updatedAt?: string;
+}
+
+export async function getLangMindConfig(): Promise<LangMindConfig> {
+  const database = requireDb();
+  const snap = await getDoc(doc(database, "system_settings", "langmind"));
+  if (snap.exists()) {
+    const data = snap.data();
+    return {
+      webhookUrl: data.webhookUrl || "",
+      enabled: data.enabled !== false,
+      updatedAt: data.updatedAt || "",
+    };
+  }
+  return { webhookUrl: "", enabled: true };
+}
+
+export async function saveLangMindConfig(config: LangMindConfig): Promise<void> {
+  const database = requireDb();
+  await setDoc(
+    doc(database, "system_settings", "langmind"),
+    {
+      ...config,
+      updatedAt: new Date().toISOString(),
+    },
+    { merge: true }
+  );
+}
+
+

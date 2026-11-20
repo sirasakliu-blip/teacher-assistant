@@ -116,5 +116,11 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isAuthenticated();
     }
+
+    // 12. การตั้งค่าระบบ (System Settings e.g. LangMind AI)
+    match /system_settings/{docId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
   }
 }
