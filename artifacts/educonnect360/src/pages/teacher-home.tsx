@@ -24,6 +24,7 @@ export default function TeacherHome() {
   const [scheduleViewTab, setScheduleViewTab] = useState<"teaching" | "advisor">("teaching");
   const [classToDelete, setClassToDelete] = useState<Class | null>(null);
   const [deletingClass, setDeletingClass] = useState(false);
+  const [viewAllClasses, setViewAllClasses] = useState(false);
 
   const advisorRoom = profile?.advisorRoom || profile?.gradeLevel || "ม.2/1";
 
@@ -53,7 +54,7 @@ export default function TeacherHome() {
     if (!profile) return;
     setLoading(true);
     try {
-      const list = await getClassesForTeacher(profile.id);
+      const list = await getClassesForTeacher(profile.id, advisorRoom, viewAllClasses);
       setClasses(list.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
     } catch (err) {
       toast({
@@ -69,7 +70,7 @@ export default function TeacherHome() {
   useEffect(() => {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile?.id]);
+  }, [profile?.id, viewAllClasses]);
 
   return (
     <div className="min-h-[100dvh] w-full bg-background relative overflow-hidden font-sans">
@@ -192,23 +193,54 @@ export default function TeacherHome() {
         </div>
 
         {/* Classes Section Header */}
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
           <div className="flex items-center gap-2">
             <span className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center text-sm">
               <i className="fa-solid fa-chalkboard text-xs" />
             </span>
-            <h2 className="text-lg font-bold text-foreground">รายชื่อห้องเรียนที่รับผิดชอบ</h2>
+            <h2 className="text-lg font-bold text-foreground">
+              {viewAllClasses ? "ห้องเรียนทั้งหมดในโรงเรียน (โหมดผู้ดูแล)" : "ห้องเรียนที่รับผิดชอบ / ที่ปรึกษา"}
+            </h2>
             <span className="text-xs px-2.5 py-0.5 rounded-full bg-muted text-muted-foreground font-semibold">
               {classes.length} ห้อง
             </span>
           </div>
 
-          <button
-            onClick={() => setShowCreateClass(true)}
-            className="text-xs font-semibold text-primary hover:underline flex items-center gap-1 cursor-pointer"
-          >
-            <i className="fa-solid fa-plus text-[10px]" /> เพิ่มห้องเรียน
-          </button>
+          <div className="flex items-center gap-2">
+            {profile?.role === "admin" && (
+              <div className="flex items-center bg-muted/80 p-1 rounded-xl border border-border text-xs">
+                <button
+                  type="button"
+                  onClick={() => setViewAllClasses(false)}
+                  className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer ${
+                    !viewAllClasses
+                      ? "bg-card text-foreground shadow-2xs font-bold"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <i className="fa-solid fa-user-check mr-1" /> ที่ปรึกษาของฉัน
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewAllClasses(true)}
+                  className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer ${
+                    viewAllClasses
+                      ? "bg-primary text-primary-foreground shadow-2xs font-bold"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <i className="fa-solid fa-school mr-1" /> ทุกห้องเรียน (แอดมิน)
+                </button>
+              </div>
+            )}
+
+            <button
+              onClick={() => setShowCreateClass(true)}
+              className="text-xs font-semibold text-primary hover:underline flex items-center gap-1 cursor-pointer ml-1"
+            >
+              <i className="fa-solid fa-plus text-[10px]" /> เพิ่มห้องเรียน
+            </button>
+          </div>
         </div>
 
         {loading ? (

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import type { TeacherInvite, AdminWhitelist, User, ParentViewToken } from "@/types";
+import type { TeacherInvite, AdminWhitelist, User, ParentViewToken, Class } from "@/types";
 import {
   createTeacherInvite,
   createTeacherInvitesBatch,
@@ -18,6 +18,10 @@ import {
   resetParentViewToken,
   bulkImportStudentsAndClasses,
   normalizeGradeRoom,
+  getAllSchoolClasses,
+  assignClassAdvisor,
+  deduplicateClasses,
+  deleteClass,
 } from "@/lib/firestore";
 import { parseExcelOrCsv, exportToExcel } from "@/lib/excel-helper";
 import { CreateStudentDialog } from "@/components/create-student-dialog";
@@ -29,7 +33,9 @@ export default function AdminDashboard() {
   const { profile, firebaseUser } = useAuth();
   const { toast } = useToast();
 
-  const [activeTab, setActiveTab] = useState<"invites" | "whitelist" | "users" | "schedules" | "import-students">("invites");
+  const [activeTab, setActiveTab] = useState<
+    "invites" | "whitelist" | "users" | "schedules" | "import-students" | "classes"
+  >("invites");
 
   // Tab 1: Teacher Invites state
   const [invites, setInvites] = useState<TeacherInvite[]>([]);
@@ -84,6 +90,98 @@ export default function AdminDashboard() {
   const [showContactModal, setShowContactModal] = useState(false);
   const [editingTeacherUser, setEditingTeacherUser] = useState<User | null>(null);
 
+  // Tab 6: Classes & Advisors state
+  const [schoolClasses, setSchoolClasses] = useState<Class[]>([]);
+  const [loadingSchoolClasses, setLoadingSchoolClasses] = useState(false);
+  const [deduplicating, setDeduplicating] = useState(false);
+  const [assigningAdvisorId, setAssigningAdvisorId] = useState<string | null>(null);
+  const [deletingClassId, setDeletingClassId] = useState<string | null>(null);
+
+  async function loadSchoolClasses() {
+    setLoadingSchoolClasses(true);
+    try {
+      const list = await getAllSchoolClasses();
+      setSchoolClasses(list.sort((a, b) => (a.gradeLevel || "").localeCompare(b.gradeLevel || "")));
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "โหลดห้องเรียนไม่สำเร็จ",
+        description: err instanceof Error ? err.message : undefined,
+      });
+    } finally {
+      setLoadingSchoolClasses(false);
+    }
+  }
+
+  async function handleDeduplicateClasses() {
+    setDeduplicating(true);
+    try {
+      const res = await deduplicateClasses();
+      toast({
+        title: "ล้างและรวมห้องเรียนซ้ำสำเร็จ",
+        description: `ตรวจสอบ ${res.scanned} ห้อง, รวมห้องซ้ำ ${res.merged} รายการ, ลบห้องว่าง ${res.removed} รายการ`,
+      });
+      await loadSchoolClasses();
+      if (users.length > 0) await loadUsersAndTokens();
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "ดำเนินการไม่สำเร็จ",
+        description: err instanceof Error ? err.message : undefined,
+      });
+    } finally {
+      setDeduplicating(false);
+    }
+  }
+
+  async function handleAssignAdvisor(classId: string, teacherUser: User | null) {
+    setAssigningAdvisorId(classId);
+    try {
+      const tId = teacherUser ? teacherUser.id || teacherUser.uid : "unassigned";
+      const tName = teacherUser
+        ? teacherUser.fullName || teacherUser.displayName || "คุณครู"
+        : "ยังไม่กำหนดครูที่ปรึกษา";
+      await assignClassAdvisor(classId, tId, tName);
+      toast({
+        title: "กำหนดครูที่ปรึกษาสำเร็จ",
+        description: teacherUser
+          ? `กำหนดให้ ${tName} เป็นครูที่ปรึกษาห้องเรียนนี้แล้ว`
+          : "ยกเลิกครูที่ปรึกษาของห้องนี้แล้ว",
+      });
+      await loadSchoolClasses();
+      if (users.length > 0) await loadUsersAndTokens();
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "กำหนดครูที่ปรึกษาไม่สำเร็จ",
+        description: err instanceof Error ? err.message : undefined,
+      });
+    } finally {
+      setAssigningAdvisorId(null);
+    }
+  }
+
+  async function handleDeleteSchoolClass(classId: string, name: string) {
+    if (!confirm(`คุณต้องการลบห้องเรียน "${name}" หรือไม่?`)) return;
+    setDeletingClassId(classId);
+    try {
+      await deleteClass(classId);
+      toast({
+        title: "ลบห้องเรียนสำเร็จ",
+        description: `ลบห้องเรียน "${name}" ออกจากระบบเรียบร้อยแล้ว`,
+      });
+      await loadSchoolClasses();
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "ลบห้องเรียนไม่สำเร็จ",
+        description: err instanceof Error ? err.message : undefined,
+      });
+    } finally {
+      setDeletingClassId(null);
+    }
+  }
+
   // Subscribe to Teacher Invites
   useEffect(() => {
     const unsubscribe = subscribeTeacherInvites((list) => {
@@ -93,12 +191,15 @@ export default function AdminDashboard() {
     return () => unsubscribe();
   }, []);
 
-  // Fetch Whitelist and Users when switching to tab (cache to make tab switching instant)
+  // Fetch Whitelist, Users, and Classes when switching tabs
   useEffect(() => {
     if (activeTab === "whitelist" && whitelist.length === 0) {
       loadWhitelist();
     } else if (activeTab === "users" && users.length === 0) {
       loadUsersAndTokens();
+    } else if (activeTab === "classes") {
+      loadSchoolClasses();
+      if (users.length === 0) loadUsersAndTokens();
     }
   }, [activeTab]);
 
@@ -799,6 +900,23 @@ export default function AdminDashboard() {
           >
             <i className="fa-solid fa-calendar-days" />
             <span>จัดการตารางเรียน (ม.1 - ม.6)</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("classes")}
+            className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition cursor-pointer ${
+              activeTab === "classes"
+                ? "border-emerald-600 text-emerald-700 font-semibold"
+                : "border-transparent text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            <i className="fa-solid fa-chalkboard-user" />
+            <span>จัดการห้องเรียน &amp; ครูที่ปรึกษา</span>
+            {schoolClasses.length > 0 && (
+              <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-slate-100 text-slate-600">
+                {schoolClasses.length}
+              </span>
+            )}
           </button>
 
           <button
@@ -1730,6 +1848,185 @@ export default function AdminDashboard() {
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {/* TAB 6: CLASSES & HOMEROOM ADVISORS */}
+        {activeTab === "classes" && (
+          <div className="space-y-6 animate-fade-in">
+            {/* Header Card */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                    <span className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm">
+                      <i className="fa-solid fa-chalkboard-user" />
+                    </span>
+                    จัดการห้องเรียนและครูที่ปรึกษาประจำห้อง ({schoolClasses.length} ห้อง)
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-1">
+                    จัดสรรครูที่ปรึกษาสำหรับแต่ละห้องเรียน และรวมห้องเรียนที่ซ้ำซ้อนเพื่อให้ข้อมูลไม่ซ้ำกัน
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <button
+                    type="button"
+                    onClick={handleDeduplicateClasses}
+                    disabled={deduplicating}
+                    className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold transition shadow-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    title="ตรวจสอบ รวมห้องเรียนที่ซ้ำซ้อน และลบห้องว่างที่ไม่มีนักเรียน"
+                  >
+                    {deduplicating ? (
+                      <>
+                        <i className="fa-solid fa-circle-notch fa-spin text-xs" /> กำลังตรวจสอบ...
+                      </>
+                    ) : (
+                      <>
+                        <i className="fa-solid fa-broom text-xs" /> รวมห้อง &amp; ล้างข้อมูลซ้ำซ้อน
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateClassModal(true)}
+                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-sm flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <i className="fa-solid fa-plus text-xs" /> สร้างห้องเรียนใหม่
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={loadSchoolClasses}
+                    className="px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-semibold transition cursor-pointer"
+                    title="รีเฟรช"
+                  >
+                    <i className="fa-solid fa-arrows-rotate" />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Classes Table */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+              {loadingSchoolClasses ? (
+                <div className="text-center py-16 text-slate-400 text-sm">
+                  <i className="fa-solid fa-circle-notch fa-spin text-emerald-600 text-xl mb-2" />
+                  <p>กำลังโหลดรายชื่อห้องเรียน...</p>
+                </div>
+              ) : schoolClasses.length === 0 ? (
+                <div className="text-center py-16 text-slate-400">
+                  <i className="fa-solid fa-chalkboard text-3xl opacity-30 mb-2" />
+                  <p className="text-sm">ยังไม่มีห้องเรียนในระบบ</p>
+                  <p className="text-xs mt-1">สามารถสร้างห้องเรียนใหม่ หรือนำเข้าไฟล์ Excel นักเรียน</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-slate-50 text-xs font-semibold text-slate-500 border-b border-slate-200">
+                      <tr>
+                        <th className="py-3 px-4 w-12 text-center">#</th>
+                        <th className="py-3 px-4">ระดับชั้น</th>
+                        <th className="py-3 px-4">ชื่อห้องเรียน</th>
+                        <th className="py-3 px-4 text-center">รหัสเข้าห้อง</th>
+                        <th className="py-3 px-4 text-center">จำนวนนักเรียน</th>
+                        <th className="py-3 px-4">ครูที่ปรึกษา / ครูผู้สอน</th>
+                        <th className="py-3 px-4 text-center">มอบหมายครูที่ปรึกษา</th>
+                        <th className="py-3 px-4 text-right">การจัดการ</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {schoolClasses.map((cls, idx) => {
+                        const teacherUsers = users.filter((u) => u.role === "teacher" || u.role === "admin");
+                        const currentTeacher = teacherUsers.find((u) => (u.id || u.uid) === cls.teacherId);
+                        const isAssigning = assigningAdvisorId === cls.id;
+
+                        return (
+                          <tr key={cls.id} className="hover:bg-slate-50/60 transition">
+                            <td className="py-3.5 px-4 text-center text-xs text-slate-400 font-mono">
+                              {idx + 1}
+                            </td>
+                            <td className="py-3.5 px-4 font-semibold text-slate-800">
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                {cls.gradeLevel || "-"}
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4 font-medium text-slate-800">
+                              {cls.name}
+                            </td>
+                            <td className="py-3.5 px-4 text-center font-mono text-xs text-slate-500">
+                              {cls.joinCode}
+                            </td>
+                            <td className="py-3.5 px-4 text-center">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">
+                                <i className="fa-solid fa-users text-[10px]" />
+                                {cls.studentIds?.length || 0} คน
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4">
+                              {cls.teacherId && cls.teacherId !== "unassigned" ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-teal-50 text-teal-800 border border-teal-200">
+                                  <i className="fa-solid fa-chalkboard-user text-teal-600" />
+                                  {cls.teacherName || currentTeacher?.fullName || currentTeacher?.displayName || cls.teacherId}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-amber-600 font-medium flex items-center gap-1">
+                                  <i className="fa-solid fa-triangle-exclamation" /> ยังไม่ระบุ
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3.5 px-4 text-center">
+                              <div className="inline-flex items-center gap-1.5">
+                                <select
+                                  disabled={isAssigning}
+                                  value={cls.teacherId || "unassigned"}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    if (val === "unassigned") {
+                                      handleAssignAdvisor(cls.id, null);
+                                    } else {
+                                      const foundTeacher = teacherUsers.find((u) => (u.id || u.uid) === val);
+                                      if (foundTeacher) handleAssignAdvisor(cls.id, foundTeacher);
+                                    }
+                                  }}
+                                  className="text-xs px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer disabled:opacity-50"
+                                >
+                                  <option value="unassigned">-- ยังไม่ระบุ --</option>
+                                  {teacherUsers.map((t) => (
+                                    <option key={t.id || t.uid} value={t.id || t.uid}>
+                                      {t.fullName || t.displayName || t.email} {t.advisorRoom ? `(${t.advisorRoom})` : ""}
+                                    </option>
+                                  ))}
+                                </select>
+                                {isAssigning && (
+                                  <i className="fa-solid fa-circle-notch fa-spin text-xs text-emerald-600" />
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-3.5 px-4 text-right">
+                              <button
+                                type="button"
+                                disabled={deletingClassId === cls.id}
+                                onClick={() => handleDeleteSchoolClass(cls.id, cls.name)}
+                                className="px-2.5 py-1.5 rounded-lg text-rose-600 hover:bg-rose-50 text-xs font-semibold transition cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
+                                title="ลบห้องเรียนนี้"
+                              >
+                                {deletingClassId === cls.id ? (
+                                  <i className="fa-solid fa-circle-notch fa-spin text-xs" />
+                                ) : (
+                                  <i className="fa-solid fa-trash-can text-xs" />
+                                )}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </main>

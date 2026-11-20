@@ -269,6 +269,25 @@ export async function createClass(input: {
   teacherName: string;
 }): Promise<Class> {
   const database = requireDb();
+  const normalizedGrade = normalizeGradeRoom(input.gradeLevel);
+
+  // Check if an identical class already exists for this teacher
+  try {
+    const existingSameClass = await getDocs(
+      query(
+        collection(database, "classes"),
+        where("teacherId", "==", input.teacherId),
+        where("name", "==", input.name.trim()),
+        where("gradeLevel", "==", normalizedGrade),
+      ),
+    );
+    if (!existingSameClass.empty) {
+      const existingDoc = existingSameClass.docs[0];
+      return mapClassDoc(existingDoc.id, existingDoc.data());
+    }
+  } catch (err) {
+    console.warn("Check duplicate class error:", err);
+  }
 
   // Regenerate on the rare chance of a collision against active codes.
   let joinCode = generateJoinCode();
@@ -287,7 +306,7 @@ export async function createClass(input: {
       query(
         collection(database, "users"),
         where("role", "==", "student"),
-        where("gradeLevel", "==", input.gradeLevel),
+        where("gradeLevel", "==", normalizedGrade),
       ),
     );
     autoStudentIds = studentSnaps.docs.map((d) => d.id);
@@ -297,7 +316,7 @@ export async function createClass(input: {
 
   const ref = await addDoc(collection(database, "classes"), {
     name: input.name,
-    gradeLevel: input.gradeLevel,
+    gradeLevel: normalizedGrade,
     cover: input.cover,
     teacherId: input.teacherId,
     teacherName: input.teacherName,
@@ -311,16 +330,61 @@ export async function createClass(input: {
   return mapClassDoc(snap.id, snap.data() as Record<string, unknown>);
 }
 
-export async function getClassesForTeacher(teacherId: string): Promise<Class[]> {
+export async function getClassesForTeacher(
+  teacherId: string,
+  advisorRoom?: string,
+  viewAll?: boolean,
+): Promise<Class[]> {
   const database = requireDb();
-  const [teacherSnap, allSnap] = await Promise.all([
+
+  // If viewAll is explicitly requested (e.g. Admin browsing all school classes)
+  if (viewAll) {
+    const allSnap = await getDocs(query(collection(database, "classes"), limit(100)));
+    const map = new Map<string, Class>();
+    allSnap.docs.forEach((d) => map.set(d.id, mapClassDoc(d.id, d.data())));
+    return Array.from(map.values());
+  }
+
+  // Otherwise, strictly load ONLY classes owned by this teacher or where this teacher is homeroom advisor!
+  const promises = [
     getDocs(query(collection(database, "classes"), where("teacherId", "==", teacherId))),
-    getDocs(query(collection(database, "classes"), limit(100))),
-  ]);
+  ];
+
+  if (advisorRoom && advisorRoom.trim()) {
+    const cleanRoom = normalizeGradeRoom(advisorRoom.trim());
+    promises.push(
+      getDocs(query(collection(database, "classes"), where("gradeLevel", "==", cleanRoom))),
+    );
+  }
+
+  const snaps = await Promise.all(promises);
   const map = new Map<string, Class>();
-  allSnap.docs.forEach((d) => map.set(d.id, mapClassDoc(d.id, d.data())));
-  teacherSnap.docs.forEach((d) => map.set(d.id, mapClassDoc(d.id, d.data())));
-  return Array.from(map.values());
+
+  snaps.forEach((snap) => {
+    snap.docs.forEach((d) => {
+      const cls = mapClassDoc(d.id, d.data());
+      map.set(d.id, cls);
+    });
+  });
+
+  // Deduplicate by normalized (name + gradeLevel) to prevent showing redundant duplicate cards
+  const seenKeys = new Map<string, Class>();
+  map.forEach((cls) => {
+    const normKey = `${(cls.name || "").trim().toLowerCase()}:::${(cls.gradeLevel || "").trim().toLowerCase()}`;
+    const existing = seenKeys.get(normKey);
+    if (!existing) {
+      seenKeys.set(normKey, cls);
+    } else {
+      // Prioritize the class owned by this teacher or having more students
+      if (cls.teacherId === teacherId && existing.teacherId !== teacherId) {
+        seenKeys.set(normKey, cls);
+      } else if ((cls.studentIds?.length || 0) > (existing.studentIds?.length || 0)) {
+        seenKeys.set(normKey, cls);
+      }
+    }
+  });
+
+  return Array.from(seenKeys.values());
 }
 
 export async function getClassesForStudent(studentId: string): Promise<Class[]> {
@@ -2837,18 +2901,184 @@ export async function getStudentHomeworkDetailed(studentUid: string) {
 /* ------------------------------------------------------------------ */
 
 /**
- * Normalizes grade level string:
- * - If "ม.1/2" -> "ม.1/2"
- * - If "ม.1" -> "ม.1/1" (If there's only one room or no room specified, default to room 1)
- * - If "ป.4" -> "ป.4/1"
+ * Normalizes grade level string into standard "ม.X/Y" format:
+ * - "1/1", "ม1/1", "มัธยมศึกษาปีที่ 1", "ม.1" -> "ม.1/1"
+ * - "ม.2/1", "2/1", "ม2" -> "ม.2/1"
+ * - "6/1", "ม6/1" -> "ม.6/1"
  */
 export function normalizeGradeRoom(raw?: string): string {
   if (!raw || !raw.trim()) return "ม.1/1";
-  const clean = raw.trim();
-  if (clean.includes("/")) {
-    return clean;
+  let clean = raw.trim().replace(/\s+/g, "");
+
+  // Convert English "M.1/1" or "M1/1" or "Grade 1"
+  clean = clean.replace(/^[Mm]\.?/, "ม.");
+
+  // Check for "มัธยมศึกษาปีที่ X" or "มัธยม X"
+  const mathayomMatch = clean.match(/(?:มัธยมศึกษาปีที่|มัธยม|ม\.)\s*([1-6])(?:\/([0-9]+))?/);
+  if (mathayomMatch) {
+    const grade = mathayomMatch[1];
+    const room = mathayomMatch[2] || "1";
+    return `ม.${grade}/${room}`;
   }
+
+  // Check for "มX/Y" e.g. "ม6/1" -> "ม.6/1"
+  const mShortMatch = clean.match(/^ม([1-6])(?:\/([0-9]+))?$/);
+  if (mShortMatch) {
+    const grade = mShortMatch[1];
+    const room = mShortMatch[2] || "1";
+    return `ม.${grade}/${room}`;
+  }
+
+  // Check for "X/Y" e.g. "1/1" -> "ม.1/1", "2/1" -> "ม.2/1"
+  const slashMatch = clean.match(/^([1-6])\/([0-9]+)$/);
+  if (slashMatch) {
+    return `ม.${slashMatch[1]}/${slashMatch[2]}`;
+  }
+
+  // Check for standalone digit 1-6 e.g. "1" -> "ม.1/1"
+  const singleDigitMatch = clean.match(/^([1-6])$/);
+  if (singleDigitMatch) {
+    return `ม.${singleDigitMatch[1]}/1`;
+  }
+
+  if (clean.includes("/")) {
+    return clean.startsWith("ม.") ? clean : `ม.${clean}`;
+  }
+
   return `${clean}/1`;
+}
+
+/**
+ * Assign a teacher as the advisor / responsible teacher of a classroom
+ */
+export async function assignClassAdvisor(
+  classId: string,
+  teacherId: string,
+  teacherName: string,
+): Promise<void> {
+  const database = requireDb();
+  const classRef = doc(database, "classes", classId);
+  const classSnap = await getDoc(classRef);
+  if (!classSnap.exists()) {
+    throw new Error("ไม่พบห้องเรียนนี้ในระบบ");
+  }
+
+  const classData = classSnap.data();
+  const gradeLevel = classData.gradeLevel || "";
+
+  // 1. Update class doc
+  await updateDoc(classRef, {
+    teacherId,
+    teacherName,
+    updatedAt: serverTimestamp(),
+  });
+
+  // 2. If valid teacher user, update teacher's advisorRoom in users collection
+  if (teacherId && teacherId !== "unassigned") {
+    try {
+      const userRef = doc(database, "users", teacherId);
+      await updateDoc(userRef, {
+        advisorRoom: gradeLevel,
+        gradeLevel: gradeLevel,
+        updatedAt: serverTimestamp(),
+      });
+    } catch (err) {
+      console.warn("Could not update user advisorRoom:", err);
+    }
+  }
+}
+
+/**
+ * Returns all school classes for admin dashboard
+ */
+export async function getAllSchoolClasses(): Promise<Class[]> {
+  const database = requireDb();
+  const snap = await getDocs(query(collection(database, "classes"), limit(100)));
+  return snap.docs.map((d) => mapClassDoc(d.id, d.data()));
+}
+
+/**
+ * Deduplicate classes across the entire school:
+ * - Merges redundant classes with identical teacher & grade level
+ * - Cleans up ghost classes with 0 students
+ * - Normalizes non-standard room formats
+ */
+export async function deduplicateClasses(): Promise<{
+  scanned: number;
+  merged: number;
+  removed: number;
+}> {
+  const database = requireDb();
+  const snap = await getDocs(collection(database, "classes"));
+  const docs = snap.docs;
+  let merged = 0;
+  let removed = 0;
+
+  const groups = new Map<string, Array<{ id: string; data: Record<string, any> }>>();
+
+  for (const d of docs) {
+    const data = d.data();
+    const students: string[] = data.studentIds || [];
+    const normGrade = normalizeGradeRoom(data.gradeLevel);
+
+    // Remove ghost empty test classes
+    if (students.length === 0 && (data.name === "คณิตศาสตร์" || data.name === "ห้องเรียนว่าง")) {
+      await deleteDoc(doc(database, "classes", d.id));
+      removed++;
+      continue;
+    }
+
+    if (data.gradeLevel !== normGrade) {
+      await updateDoc(doc(database, "classes", d.id), {
+        gradeLevel: normGrade,
+        updatedAt: serverTimestamp(),
+      });
+      data.gradeLevel = normGrade;
+    }
+
+    const key = `${(data.name || "").trim().toLowerCase()}:::${normGrade}`;
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+    groups.get(key)!.push({ id: d.id, data });
+  }
+
+  // Merge identical rooms for the same teacher
+  for (const [, items] of groups.entries()) {
+    if (items.length > 1) {
+      const byTeacher = new Map<string, typeof items>();
+      for (const item of items) {
+        const tId = item.data.teacherId || "unassigned";
+        if (!byTeacher.has(tId)) byTeacher.set(tId, []);
+        byTeacher.get(tId)!.push(item);
+      }
+
+      for (const [, teacherItems] of byTeacher.entries()) {
+        if (teacherItems.length > 1) {
+          teacherItems.sort(
+            (a, b) => (b.data.studentIds?.length || 0) - (a.data.studentIds?.length || 0),
+          );
+          const primary = teacherItems[0];
+          const duplicates = teacherItems.slice(1);
+
+          const allStudentIds = new Set<string>(primary.data.studentIds || []);
+          for (const dup of duplicates) {
+            (dup.data.studentIds || []).forEach((id: string) => allStudentIds.add(id));
+            await deleteDoc(doc(database, "classes", dup.id));
+            removed++;
+          }
+
+          await updateDoc(doc(database, "classes", primary.id), {
+            studentIds: Array.from(allStudentIds),
+            updatedAt: serverTimestamp(),
+          });
+          merged++;
+        }
+      }
+    }
+  }
+
+  return { scanned: docs.length, merged, removed };
 }
 
 export async function bulkImportStudentsAndClasses(
