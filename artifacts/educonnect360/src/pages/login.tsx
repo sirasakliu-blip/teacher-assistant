@@ -7,7 +7,14 @@ export default function Login() {
   const { login, loginWithGoogle, firebaseUser, profile, loading } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const [loginRole, setLoginRole] = useState<"student" | "teacher">("teacher");
+  const [loginRole, setLoginRole] = useState<"student" | "teacher">(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const roleParam = params.get("role");
+      if (roleParam === "teacher") return "teacher";
+    }
+    return "student";
+  });
   const [studentId, setStudentId] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
