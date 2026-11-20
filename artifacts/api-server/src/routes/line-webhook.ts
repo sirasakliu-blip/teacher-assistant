@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
-import handler from "../../../../api/line-webhook";
+// @ts-ignore
+import handler from "../../../../api/line-webhook.js";
 
 const router = Router();
 
