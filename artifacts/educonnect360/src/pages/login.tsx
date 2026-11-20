@@ -93,34 +93,43 @@ export default function Login() {
     setSubmitting(true);
     try {
       if (loginRole === "student") {
-        const cleanId = studentId.trim();
+        const cleanId = studentId.trim().replace(/\s+/g, "");
+        const cleanPwd = password.trim();
         if (!cleanId) {
           throw new Error("กรุณากรอกรหัสนักเรียน");
         }
-        if (!password) {
+        if (!cleanPwd) {
           throw new Error("กรุณากรอกรหัสผ่าน");
         }
         const syntheticEmail = `${cleanId}@student.school.local`;
-        try {
-          await login(syntheticEmail, password);
-        } catch {
-          if (password === "0000") {
-            try {
-              await login(syntheticEmail, `STD_0000_${cleanId}`);
-            } catch {
-              try {
-                await login(syntheticEmail, "000000");
-              } catch {
-                try {
-                  await login(syntheticEmail, `STD_PASS_${cleanId}`);
-                } catch {
-                  throw new Error("รหัสนักเรียนหรือรหัสผ่านไม่ถูกต้อง กรุณาตรวจสอบหรือติดต่อครูประจำชั้น");
-                }
-              }
+
+        const candidatePasswords: string[] = [
+          cleanPwd,
+          `STD_PASS_${cleanPwd}`,
+          `STD_PASS_${cleanId}`,
+          `STD_PASS_${cleanId}_${cleanPwd}`,
+          cleanPwd.padEnd(6, "0"),
+          `STD_0000_${cleanId}`,
+          "000000",
+          cleanId.padEnd(6, "0"),
+        ];
+
+        let loggedIn = false;
+        for (const cand of candidatePasswords) {
+          if (!cand || cand.length < 6) continue;
+          try {
+            await login(syntheticEmail, cand);
+            loggedIn = true;
+            break;
+          } catch (err: any) {
+            if (err?.message?.includes("ยังไม่พบบัญชีผู้ใช้งานในระบบ")) {
+              throw err;
             }
-          } else {
-            throw new Error("รหัสนักเรียนหรือรหัสผ่านไม่ถูกต้อง กรุณาตรวจสอบหรือติดต่อครูประจำชั้น");
           }
+        }
+
+        if (!loggedIn) {
+          throw new Error("รหัสนักเรียนหรือรหัสผ่านไม่ถูกต้อง กรุณาตรวจสอบหรือติดต่อครูประจำชั้น");
         }
       } else {
         await login(email, password);

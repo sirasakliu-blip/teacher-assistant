@@ -54,15 +54,6 @@ export function CreateStudentDialog({
       return;
     }
 
-    if (passToUse.length < 6) {
-      toast({
-        variant: "destructive",
-        title: "รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร",
-        description: "หากรหัสนักเรียนสั้นกว่า 6 ตัวอักษร กรุณากำหนดรหัสผ่านในช่องด้านล่าง",
-      });
-      return;
-    }
-
     setSaving(true);
     try {
       const student = await createStudentAccountByStaff({
@@ -80,8 +71,8 @@ export function CreateStudentDialog({
       });
 
       toast({
-        title: "สร้างบัญชีนักเรียนสำเร็จ",
-        description: `สร้างบัญชีสำหรับ ${cleanName} (รหัส ${cleanId}) เรียบร้อยแล้ว`,
+        title: "บันทึกข้อมูลนักเรียนสำเร็จ",
+        description: `บันทึกบัญชีสำหรับ ${cleanName} (รหัส ${cleanId}) เรียบร้อยแล้ว`,
       });
 
       if (onSuccess) {
@@ -251,9 +242,12 @@ export function CreateStudentDialog({
                 type="text"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="รหัสผ่านอย่างน้อย 6 ตัวอักษร"
+                placeholder="เช่น 0000, 1234 หรือเว้นว่างเพื่อใช้รหัสนักเรียน"
                 className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/80 focus:outline-none text-sm font-mono"
               />
+              <p className="text-[11px] text-muted-foreground mt-1">
+                กำหนดรหัสผ่านสั้นๆ ได้ตามต้องการ ไม่จำกัดความยาว (เช่น 0000 หรือเว้นว่าง)
+              </p>
             </div>
 
             <div className="pt-3 flex gap-2">

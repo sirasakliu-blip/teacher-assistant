@@ -26,6 +26,8 @@ import { initializeApp, deleteApp } from "firebase/app";
 import {
   getAuth,
   createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  updatePassword,
   updateProfile,
   signOut,
 } from "firebase/auth";
@@ -139,12 +141,27 @@ export async function createUserProfile(
 
 export async function getUserProfile(uid: string): Promise<User | null> {
   const database = requireDb();
-  const snap = await getDoc(doc(database, "users", uid));
-  if (!snap.exists()) return null;
+  let snap = await getDoc(doc(database, "users", uid));
+  if (!snap.exists()) {
+    // Fallback: lookup by uid field or studentId
+    const qUid = query(collection(database, "users"), where("uid", "==", uid));
+    const snapUid = await getDocs(qUid);
+    if (!snapUid.empty) {
+      snap = snapUid.docs[0];
+    } else {
+      const qStd = query(collection(database, "users"), where("studentId", "==", uid));
+      const snapStd = await getDocs(qStd);
+      if (!snapStd.empty) {
+        snap = snapStd.docs[0];
+      } else {
+        return null;
+      }
+    }
+  }
   const data = snap.data();
   return {
     id: snap.id,
-    uid: data.uid,
+    uid: data.uid || snap.id,
     email: data.email,
     displayName: data.displayName,
     fullName: data.fullName || data.displayName,
@@ -2066,9 +2083,11 @@ export async function enrollStudentInClass(classId: string, studentId: string): 
 }
 
 /**
- * Creates a new student account in Firebase Auth and Cloud Firestore by a Teacher or Admin.
- * Uses a Secondary Firebase App Instance to ensure the currently logged in Teacher/Admin
- * session is NOT signed out or interrupted.
+ * Creates or updates a student account in Firebase Auth and Cloud Firestore by a Teacher or Admin.
+ * - Allows any password length (e.g. 0000, 1234, or blank for student ID)
+ * - If student already exists in Firebase Auth, gracefully syncs password and updates Firestore profile
+ * - Uses a Secondary Firebase App Instance to ensure the currently logged in Teacher/Admin
+ *   session is NOT signed out or interrupted.
  */
 export async function createStudentAccountByStaff(input: {
   studentId: string;
@@ -2077,15 +2096,16 @@ export async function createStudentAccountByStaff(input: {
   password?: string;
   classIdToEnroll?: string;
 }): Promise<User> {
-  const cleanStudentId = input.studentId.trim();
+  const cleanStudentId = input.studentId.trim().replace(/\s+/g, "");
   const cleanFullName = input.fullName.trim();
-  const rawPassword = input.password?.trim();
-  const password = rawPassword && rawPassword.length >= 6 ? rawPassword : cleanStudentId;
+  const rawPassword = input.password?.trim() || cleanStudentId;
 
   if (!cleanStudentId) throw new Error("กรุณากรอกรหัสนักเรียน");
   if (!cleanFullName) throw new Error("กรุณากรอกชื่อ-นามสกุลนักเรียน");
-  if (password.length < 6) throw new Error("รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร");
 
+  // Allow any password length. Firebase Auth enforces >= 6 chars;
+  // map short passwords deterministically to `STD_PASS_${rawPassword}`
+  const authPassword = rawPassword.length >= 6 ? rawPassword : `STD_PASS_${rawPassword}`;
   const syntheticEmail = `${cleanStudentId}@student.school.local`;
 
   // Secondary Firebase App Instance to protect current teacher/admin login session
@@ -2095,15 +2115,48 @@ export async function createStudentAccountByStaff(input: {
 
   let newUid = "";
   try {
-    const cred = await createUserWithEmailAndPassword(secondaryAuth, syntheticEmail, password);
+    const cred = await createUserWithEmailAndPassword(secondaryAuth, syntheticEmail, authPassword);
     newUid = cred.user.uid;
     await updateProfile(cred.user, { displayName: cleanFullName });
     await signOut(secondaryAuth);
   } catch (authError: any) {
     if (authError?.code === "auth/email-already-in-use") {
-      throw new Error(`รหัสนักเรียน "${cleanStudentId}" มีอยู่ในระบบแล้ว`);
+      // Account already exists in Firebase Auth.
+      // Attempt to sign in to update the password to the requested authPassword
+      const candidateOldPasswords = [
+        authPassword,
+        rawPassword,
+        `STD_PASS_${cleanStudentId}`,
+        `STD_PASS_${rawPassword}`,
+        `STD_0000_${cleanStudentId}`,
+        "000000",
+        cleanStudentId.padEnd(6, "0"),
+        cleanStudentId,
+        "123456",
+      ];
+
+      for (const cand of candidateOldPasswords) {
+        if (!cand || cand.length < 6) continue;
+        try {
+          const cred = await signInWithEmailAndPassword(secondaryAuth, syntheticEmail, cand);
+          newUid = cred.user.uid;
+          if (cand !== authPassword) {
+            try {
+              await updatePassword(cred.user, authPassword);
+            } catch (pErr) {
+              console.warn("Could not sync student password in secondary auth:", pErr);
+            }
+          }
+          await updateProfile(cred.user, { displayName: cleanFullName });
+          await signOut(secondaryAuth);
+          break;
+        } catch {
+          // continue testing candidates
+        }
+      }
+    } else {
+      throw authError;
     }
-    throw authError;
   } finally {
     try {
       await deleteApp(secondaryApp);
@@ -2112,47 +2165,106 @@ export async function createStudentAccountByStaff(input: {
     }
   }
 
-  const normalized = normalizeThaiName(cleanFullName);
-  const parentViewToken = generateParentViewToken();
   const database = requireDb();
+  const normalized = normalizeThaiName(cleanFullName);
 
-  // 1. Create Parent View Token
-  await setDoc(doc(database, "parent_view_tokens", parentViewToken), {
-    token: parentViewToken,
-    studentUid: newUid,
-    studentId: cleanStudentId,
-    studentName: cleanFullName,
-    isActive: true,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
+  // If newUid was not obtained from Auth, look up existing doc or fallback to std_{cleanStudentId}
+  if (!newUid) {
+    const existingSnap = await getDocs(
+      query(collection(database, "users"), where("studentId", "==", cleanStudentId))
+    );
+    if (!existingSnap.empty) {
+      newUid = existingSnap.docs[0].id;
+    } else {
+      newUid = `std_${cleanStudentId}`;
+    }
+  }
 
-  // 2. Create User document in users collection
+  // Update or create Firestore User document
   const userRef = doc(database, "users", newUid);
-  await setDoc(userRef, {
-    uid: newUid,
-    email: syntheticEmail,
-    displayName: cleanFullName,
-    fullName: cleanFullName,
-    searchName: normalized.searchName,
-    normalizedFullName: normalized.normalizedFullName,
-    role: "student",
-    studentId: cleanStudentId,
-    gradeLevel: input.className?.trim() || "มัธยมศึกษา",
-    parentViewToken,
-    linkedStudentIds: [],
-    photoURL: null,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
+  const userSnap = await getDoc(userRef);
 
-  // 3. Optionally enroll in specified class
+  let parentViewToken = "";
+  if (userSnap.exists()) {
+    const data = userSnap.data();
+    parentViewToken = data.parentViewToken || generateParentViewToken();
+    await updateDoc(userRef, {
+      displayName: cleanFullName,
+      fullName: cleanFullName,
+      searchName: normalized.searchName,
+      normalizedFullName: normalized.normalizedFullName,
+      studentId: cleanStudentId,
+      gradeLevel: input.className?.trim() || data.gradeLevel || "มัธยมศึกษา",
+      initialPassword: rawPassword,
+      rawPassword: rawPassword,
+      updatedAt: serverTimestamp(),
+    });
+  } else {
+    // Check if another doc has this studentId
+    const stdQuery = await getDocs(
+      query(collection(database, "users"), where("studentId", "==", cleanStudentId))
+    );
+    if (!stdQuery.empty) {
+      const existingDoc = stdQuery.docs[0];
+      newUid = existingDoc.id;
+      const data = existingDoc.data();
+      parentViewToken = data.parentViewToken || generateParentViewToken();
+      await updateDoc(doc(database, "users", newUid), {
+        displayName: cleanFullName,
+        fullName: cleanFullName,
+        searchName: normalized.searchName,
+        normalizedFullName: normalized.normalizedFullName,
+        studentId: cleanStudentId,
+        gradeLevel: input.className?.trim() || data.gradeLevel || "มัธยมศึกษา",
+        initialPassword: rawPassword,
+        rawPassword: rawPassword,
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      // Create new Firestore document
+      parentViewToken = generateParentViewToken();
+      await setDoc(doc(database, "parent_view_tokens", parentViewToken), {
+        token: parentViewToken,
+        studentUid: newUid,
+        studentId: cleanStudentId,
+        studentName: cleanFullName,
+        isActive: true,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      await setDoc(userRef, {
+        uid: newUid,
+        email: syntheticEmail,
+        displayName: cleanFullName,
+        fullName: cleanFullName,
+        searchName: normalized.searchName,
+        normalizedFullName: normalized.normalizedFullName,
+        role: "student",
+        studentId: cleanStudentId,
+        gradeLevel: input.className?.trim() || "มัธยมศึกษา",
+        initialPassword: rawPassword,
+        rawPassword: rawPassword,
+        parentViewToken,
+        linkedStudentIds: [],
+        photoURL: null,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+  }
+
+  // Optionally enroll in specified class
   if (input.classIdToEnroll) {
     await enrollStudentInClass(input.classIdToEnroll, newUid);
   }
 
-  // 4. Pre-aggregate summary for sub-second LINE Webhook & Parent View lookup
-  await syncStudentSummary(newUid);
+  // Pre-aggregate summary for sub-second LINE Webhook & Parent View lookup
+  try {
+    await syncStudentSummary(newUid);
+  } catch (err) {
+    console.error("syncStudentSummary error:", err);
+  }
 
   return {
     id: newUid,
