@@ -2,7 +2,7 @@ import { useState, useEffect, type FormEvent } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { lookupThaiPostalCode } from "@/lib/thai-geo";
+import { lookupThaiPostalCode, SPM_AREAS } from "@/lib/thai-geo";
 import type { User as FirebaseUser } from "firebase/auth";
 
 export default function Register() {
@@ -19,7 +19,8 @@ export default function Register() {
 
   // 1. School & Location state (ย้ายโรงเรียนขึ้นบนสุด + ใส่จังหวัด อำเภอ ตำบล ที่ตั้ง หมู่)
   const [schoolName, setSchoolName] = useState("");
-  const [affiliation, setAffiliation] = useState("สพฐ.");
+  const [affiliation, setAffiliation] = useState("สพม.");
+  const [secArea, setSecArea] = useState("");
   const [address, setAddress] = useState("");
   const [moo, setMoo] = useState("");
   const [postalCode, setPostalCode] = useState("");
@@ -60,6 +61,13 @@ export default function Register() {
         setDetectedLocation(
           geo.district ? `${geo.district}, จ.${geo.province}` : `จ.${geo.province}`
         );
+        // Smart auto-match สพม. based on province if not set yet
+        if (!secArea && affiliation === "สพม.") {
+          const matchedArea = SPM_AREAS.find((a) => a.includes(geo.province));
+          if (matchedArea) {
+            setSecArea(matchedArea);
+          }
+        }
       } else {
         setDetectedLocation(null);
       }
@@ -192,6 +200,8 @@ export default function Register() {
     try {
       const schoolInfo = {
         schoolName: schoolName.trim() || undefined,
+        affiliation: affiliation || undefined,
+        secArea: secArea.trim() || undefined,
         address: address.trim() || undefined,
         moo: moo.trim() || undefined,
         postalCode: postalCode.trim() || undefined,
@@ -279,24 +289,61 @@ export default function Register() {
                 </div>
               </div>
 
-              {/* 2. สังกัดสถานศึกษา */}
-              <div>
-                <label className="block text-xs font-semibold text-foreground mb-1.5">
-                  สังกัดการศึกษา
-                </label>
-                <select
-                  value={affiliation}
-                  onChange={(e) => setAffiliation(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm"
-                >
-                  <option value="สพฐ.">สำนักงานคณะกรรมการการศึกษาขั้นพื้นฐาน (สพฐ.)</option>
-                  <option value="สช.">สำนักงานคณะกรรมการส่งเสริมการศึกษาเอกชน (สช.)</option>
-                  <option value="กทม.">กรุงเทพมหานคร (กทม.)</option>
-                  <option value="อปท.">องค์กรปกครองส่วนท้องถิ่น (อปท.)</option>
-                  <option value="สอศ.">สำนักงานคณะกรรมการการอาชีวศึกษา (สอศ.)</option>
-                  <option value="อุดมศึกษา">สถาบันอุดมศึกษา / มหาวิทยาลัย</option>
-                  <option value="อื่นๆ">อื่นๆ</option>
-                </select>
+              {/* 2. สังกัดสถานศึกษา & เขตพื้นที่ สพม. */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-start">
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1.5 flex items-center justify-between">
+                    <span>สังกัดการศึกษา</span>
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded">
+                      มัธยม: สพม.
+                    </span>
+                  </label>
+                  <select
+                    value={affiliation}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setAffiliation(val);
+                      if (val === "สพม." && !secArea && province) {
+                        const matched = SPM_AREAS.find((a) => a.includes(province));
+                        if (matched) setSecArea(matched);
+                      }
+                    }}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm"
+                  >
+                    <option value="สพม.">สำนักงานเขตพื้นที่การศึกษามัธยมศึกษา (สพม.)</option>
+                    <option value="สพป.">สำนักงานเขตพื้นที่การศึกษาประถมศึกษา (สพป.)</option>
+                    <option value="สพฐ.">สำนักงานคณะกรรมการการศึกษาขั้นพื้นฐาน (สพฐ.)</option>
+                    <option value="สช.">สำนักงานคณะกรรมการส่งเสริมการศึกษาเอกชน (สช.)</option>
+                    <option value="กทม.">กรุงเทพมหานคร (กทม.)</option>
+                    <option value="อปท.">องค์กรปกครองส่วนท้องถิ่น (อปท.)</option>
+                    <option value="สอศ.">สำนักงานคณะกรรมการการอาชีวศึกษา (สอศ.)</option>
+                    <option value="อุดมศึกษา">สถาบันอุดมศึกษา / มหาวิทยาลัย</option>
+                    <option value="อื่นๆ">อื่นๆ</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1.5 flex items-center justify-between">
+                    <span>{affiliation === "สพม." ? "เขตพื้นที่ สพม." : "เขตพื้นที่ / สังกัดย่อย"}</span>
+                    <span className="text-[10px] text-muted-foreground">{affiliation === "สพม." ? "62 เขตทั่วประเทศ" : "ระบุถ้ามี"}</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      list="spm-area-list"
+                      value={secArea}
+                      onChange={(e) => setSecArea(e.target.value)}
+                      placeholder={affiliation === "สพม." ? "เช่น สพม.กรุงเทพมหานคร เขต 1" : "ระบุเขตพื้นที่การศึกษา"}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm placeholder:text-muted-foreground/60 transition"
+                    />
+                    <datalist id="spm-area-list">
+                      {SPM_AREAS.map((area) => (
+                        <option key={area} value={area} />
+                      ))}
+                    </datalist>
+                    <i className="fa-solid fa-landmark absolute right-3.5 top-3.5 text-muted-foreground/60 text-xs pointer-events-none" />
+                  </div>
+                </div>
               </div>
 
               {/* 3. ที่ตั้งสถานศึกษา (เลขที่/ถนน) & หมู่ที่ */}

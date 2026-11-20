@@ -25,6 +25,8 @@ export interface User {
   gradeLevel?: string; // e.g. "ม.3/1" (สำหรับนักเรียน: ชั้นเรียน / สำหรับครู: ห้องที่ปรึกษา)
   advisorRoom?: string; // e.g. "ม.2/1" (สำหรับครู: ครูประจำชั้น / ครูที่ปรึกษา)
   schoolName?: string; // e.g. "โรงเรียนเตรียมอุดมศึกษา"
+  affiliation?: string; // สังกัด เช่น สพม., สพป., สพฐ., สช.
+  secArea?: string; // สำนักงานเขตพื้นที่การศึกษา เช่น สพม. กรุงเทพมหานคร เขต 1
   address?: string; // ที่ตั้งสถานศึกษา เช่น เลขที่ 99 ถ.พญาไท
   moo?: string; // หมู่ที่ เช่น "หมู่ 1" หรือ "-"
   postalCode?: string; // e.g. "10330"
@@ -40,6 +42,8 @@ export interface User {
 
 export interface SchoolLocationInfo {
   schoolName?: string;
+  affiliation?: string; // สังกัด เช่น สพม., สพป., สพฐ.
+  secArea?: string; // สำนักงานเขตพื้นที่การศึกษา เช่น สพม. กรุงเทพมหานคร เขต 1
   address?: string; // ที่ตั้ง / เลขที่ / ถนน
   moo?: string; // หมู่ที่
   postalCode?: string;
