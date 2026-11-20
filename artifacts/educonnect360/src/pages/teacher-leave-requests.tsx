@@ -88,7 +88,7 @@ export default function TeacherLeaveRequests() {
           <div>
             <h1 className="text-3xl font-extrabold text-foreground">จัดการหนังสือใบลา</h1>
             <p className="text-muted-foreground mt-1">
-              พิจารณาคำขอใบลาของนักเรียน และพิมพ์เอกสารแบบฟอร์มครูตามมาตรฐาน TH Sarabun PSK
+              พิจารณาคำขอใบลาของนักเรียน
             </p>
           </div>
           <div className="flex items-center gap-2">
