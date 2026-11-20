@@ -14,8 +14,11 @@ export interface User {
   uid: string; // Firebase Auth UID
   email: string;
   displayName: string;
+  fullName?: string;
   photoURL?: string | null;
   role: UserRole;
+  studentId?: string; // e.g. "67105"
+  parentViewToken?: string; // Token for parent access
   inviteCodeUsed?: string; // The teacher invite code used to register
   linkedStudentIds?: string[]; // Student UIDs linked to parent account
   createdAt: string; // ISO timestamp

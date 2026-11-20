@@ -64,7 +64,11 @@ export async function createUserProfile(
   email: string,
   displayName: string,
   role: UserRole,
-  inviteCodeUsed?: string,
+  extra?: {
+    inviteCodeUsed?: string;
+    studentId?: string;
+    parentViewToken?: string;
+  },
 ): Promise<User> {
   const database = requireDb();
   const ref = doc(database, "users", uid);
@@ -72,14 +76,21 @@ export async function createUserProfile(
     uid,
     email,
     displayName,
+    fullName: displayName,
     role,
     linkedStudentIds: [],
     photoURL: null,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
-  if (inviteCodeUsed) {
-    dataToSave.inviteCodeUsed = inviteCodeUsed;
+  if (extra?.inviteCodeUsed) {
+    dataToSave.inviteCodeUsed = extra.inviteCodeUsed;
+  }
+  if (extra?.studentId) {
+    dataToSave.studentId = extra.studentId;
+  }
+  if (extra?.parentViewToken) {
+    dataToSave.parentViewToken = extra.parentViewToken;
   }
   await setDoc(ref, dataToSave);
   return {
@@ -87,8 +98,11 @@ export async function createUserProfile(
     uid,
     email,
     displayName,
+    fullName: displayName,
     role,
-    inviteCodeUsed,
+    studentId: extra?.studentId,
+    parentViewToken: extra?.parentViewToken,
+    inviteCodeUsed: extra?.inviteCodeUsed,
     linkedStudentIds: [],
     photoURL: null,
     createdAt: new Date().toISOString(),
@@ -106,7 +120,10 @@ export async function getUserProfile(uid: string): Promise<User | null> {
     uid: data.uid,
     email: data.email,
     displayName: data.displayName,
+    fullName: data.fullName || data.displayName,
     role: data.role,
+    studentId: data.studentId,
+    parentViewToken: data.parentViewToken,
     inviteCodeUsed: data.inviteCodeUsed,
     linkedStudentIds: (data.linkedStudentIds as string[]) ?? [],
     photoURL: data.photoURL ?? null,
@@ -658,30 +675,43 @@ export async function linkStudentToParent(
   queryStr: string,
 ): Promise<User> {
   const database = requireDb();
-  const trimmed = queryStr.trim().toLowerCase();
-  if (!trimmed) throw new Error("กรุณากรอกอีเมลของนักเรียน");
+  const rawQuery = queryStr.trim();
+  const trimmed = rawQuery.toLowerCase();
+  if (!trimmed) throw new Error("กรุณากรอกรหัสนักเรียนหรืออีเมล");
 
-  // Look up student by email
-  const studentSnap = await getDocs(
+  // 1. Try look up by studentId directly
+  let studentSnap = await getDocs(
     query(
       collection(database, "users"),
-      where("email", "==", trimmed),
+      where("studentId", "==", rawQuery),
       where("role", "==", "student"),
     ),
   );
 
+  // 2. Try look up by synthetic student email or normal email
+  if (studentSnap.empty) {
+    const lookupEmail = trimmed.includes("@") ? trimmed : `${trimmed}@student.school.local`;
+    studentSnap = await getDocs(
+      query(
+        collection(database, "users"),
+        where("email", "==", lookupEmail),
+        where("role", "==", "student"),
+      ),
+    );
+  }
+
   let studentDoc = studentSnap.empty ? null : studentSnap.docs[0];
 
   if (!studentDoc) {
-    // Try lookup by user UID
-    const directDoc = await getDoc(doc(database, "users", queryStr.trim()));
+    // 3. Try lookup by user UID
+    const directDoc = await getDoc(doc(database, "users", rawQuery));
     if (directDoc.exists() && directDoc.data().role === "student") {
       studentDoc = directDoc;
     }
   }
 
   if (!studentDoc) {
-    throw new Error("ไม่พบบัญชีนักเรียนที่ใช้อีเมลนี้ กรุณาตรวจสอบอีเมลของบุตรหลาน");
+    throw new Error("ไม่พบบัญชีนักเรียนที่ใช้รหัสหรืออีเมลนี้ กรุณาตรวจสอบอีกครั้ง");
   }
 
   const sData = studentDoc.data();
@@ -690,6 +720,9 @@ export async function linkStudentToParent(
     uid: sData.uid,
     email: sData.email,
     displayName: sData.displayName,
+    fullName: sData.fullName || sData.displayName,
+    studentId: sData.studentId,
+    parentViewToken: sData.parentViewToken,
     role: sData.role,
     linkedStudentIds: (sData.linkedStudentIds as string[]) ?? [],
     photoURL: sData.photoURL ?? null,

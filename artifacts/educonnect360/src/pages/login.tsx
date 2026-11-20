@@ -7,13 +7,15 @@ export default function Login() {
   const { login, firebaseUser, profile, loading } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const [loginRole, setLoginRole] = useState<"student" | "teacher">("student");
+  const [studentId, setStudentId] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!loading && firebaseUser && profile) {
-      if (profile.role === "teacher") setLocation("/teacher");
+      if (profile.role === "teacher" || profile.role === "admin") setLocation("/teacher");
       else if (profile.role === "parent") setLocation("/parent");
       else setLocation("/student");
     }
@@ -23,7 +25,21 @@ export default function Login() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      await login(email, password);
+      if (loginRole === "student") {
+        const cleanId = studentId.trim();
+        if (!cleanId) {
+          throw new Error("กรุณากรอกรหัสนักเรียน");
+        }
+        const syntheticEmail = `${cleanId}@student.school.local`;
+        const syntheticPassword = `STD_PASS_${cleanId}`;
+        try {
+          await login(syntheticEmail, syntheticPassword);
+        } catch {
+          throw new Error("ไม่พบรหัสนักเรียนนี้ในระบบ กรุณาสมัครสมาชิกก่อนเข้าใช้งาน");
+        }
+      } else {
+        await login(email, password);
+      }
       toast({ title: "เข้าสู่ระบบสำเร็จ", description: "ยินดีต้อนรับกลับ" });
     } catch (err) {
       toast({
@@ -56,42 +72,97 @@ export default function Login() {
 
         <div className="glass-panel rounded-3xl p-8 md:p-10">
           <h1 className="text-2xl font-bold text-foreground mb-1">ยินดีต้อนรับกลับ</h1>
-          <p className="text-muted-foreground text-sm mb-8">
+          <p className="text-muted-foreground text-sm mb-6">
             เข้าสู่ระบบเพื่อจัดการห้องเรียนและการเข้าเรียนของคุณ
           </p>
 
+          {/* Role Tab Switcher: นักเรียน vs ครู */}
+          <div className="grid grid-cols-2 gap-2 p-1.5 rounded-2xl bg-muted/60 border border-border/80 mb-6">
+            <button
+              type="button"
+              onClick={() => setLoginRole("student")}
+              className={`py-2.5 px-3 rounded-xl text-sm font-semibold transition-all duration-200 flex items-center justify-center gap-2 ${
+                loginRole === "student"
+                  ? "bg-primary text-primary-foreground shadow-md shadow-primary/20 scale-[1.01]"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <i className="fa-solid fa-user-graduate" /> นักเรียน
+            </button>
+            <button
+              type="button"
+              onClick={() => setLoginRole("teacher")}
+              className={`py-2.5 px-3 rounded-xl text-sm font-semibold transition-all duration-200 flex items-center justify-center gap-2 ${
+                loginRole === "teacher"
+                  ? "bg-primary text-primary-foreground shadow-md shadow-primary/20 scale-[1.01]"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <i className="fa-solid fa-chalkboard-user" /> ครู
+            </button>
+          </div>
+
           <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <label className="block text-sm font-semibold text-foreground mb-2">
-                อีเมล
-              </label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="teacher@school.ac.th"
-                className="w-full px-4 py-3 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-ring text-foreground placeholder:text-muted-foreground/70"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-foreground mb-2">
-                รหัสผ่าน
-              </label>
-              <input
-                type="password"
-                required
-                minLength={6}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full px-4 py-3 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-ring text-foreground placeholder:text-muted-foreground/70"
-              />
-            </div>
+            {loginRole === "student" ? (
+              /* Student Login Form: Only Student ID */
+              <div className="animate-fade-in-down transition-all duration-200">
+                <label className="block text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+                  <i className="fa-solid fa-id-badge text-primary" />
+                  รหัสนักเรียน
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    value={studentId}
+                    onChange={(e) => setStudentId(e.target.value.replace(/\s+/g, ""))}
+                    placeholder="กรอกรหัสนักเรียน เช่น 67105"
+                    className="w-full px-4 py-3 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground font-mono placeholder:text-muted-foreground/60 text-base"
+                    autoFocus
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1.5">
+                  <i className="fa-solid fa-circle-info text-primary" />
+                  เข้าสู่ระบบสะดวกรวดเร็วด้วยรหัสนักเรียนโดยไม่ต้องใช้อีเมล
+                </p>
+              </div>
+            ) : (
+              /* Teacher Login Form: Email & Password */
+              <div className="space-y-4 animate-fade-in-down transition-all duration-200">
+                <div>
+                  <label className="block text-sm font-semibold text-foreground mb-2">
+                    อีเมล
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="teacher@school.ac.th"
+                    className="w-full px-4 py-3 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-ring text-foreground placeholder:text-muted-foreground/70"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-foreground mb-2">
+                    รหัสผ่าน
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full px-4 py-3 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-ring text-foreground placeholder:text-muted-foreground/70"
+                  />
+                </div>
+              </div>
+            )}
+
             <button
               type="submit"
               disabled={submitting}
-              className="w-full py-3.5 rounded-xl bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition-all duration-300 shadow-lg shadow-primary/25 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-60 disabled:hover:translate-y-0 flex items-center justify-center gap-2"
+              className="w-full py-3.5 rounded-xl bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition-all duration-300 shadow-lg shadow-primary/25 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-60 disabled:hover:translate-y-0 flex items-center justify-center gap-2 mt-2"
             >
               {submitting ? (
                 <i className="fa-solid fa-circle-notch fa-spin" />

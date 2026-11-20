@@ -92,9 +92,15 @@ export default function StudentHome() {
           </span>
         </Link>
         <div className="flex items-center gap-4">
-          <span className="hidden sm:flex items-center gap-2 text-sm font-medium text-muted-foreground">
-            <i className="fa-solid fa-user-graduate text-primary" /> {profile?.displayName}
-          </span>
+          <div className="hidden sm:flex items-center gap-2.5 text-sm font-medium text-muted-foreground glass-panel px-3.5 py-1.5 rounded-xl border border-border/60">
+            <i className="fa-solid fa-user-graduate text-primary" />
+            <span className="font-semibold text-foreground">{profile?.displayName}</span>
+            {profile?.studentId && (
+              <span className="text-xs px-2 py-0.5 rounded-md bg-primary/10 text-primary font-mono font-bold border border-primary/20">
+                รหัส: {profile.studentId}
+              </span>
+            )}
+          </div>
           <button
             onClick={logout}
             className="px-4 py-2 rounded-lg glass-panel text-sm font-semibold text-foreground hover:bg-white/60 dark:hover:bg-black/20 transition-all flex items-center gap-2"
@@ -107,8 +113,17 @@ export default function StudentHome() {
       <main className="relative z-10 max-w-6xl mx-auto px-6 md:px-10 py-10">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 animate-fade-in-up">
           <div>
-            <h1 className="text-3xl font-extrabold text-foreground">ห้องเรียนของฉัน</h1>
-            <p className="text-muted-foreground mt-1">เข้าร่วมห้องเรียน เช็คชื่อเข้าเรียน และส่งหนังสือใบลา</p>
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-extrabold text-foreground">ห้องเรียนของฉัน</h1>
+              {profile?.studentId && (
+                <span className="text-xs px-2.5 py-1 rounded-lg bg-primary/10 text-primary font-mono font-bold border border-primary/20">
+                  รหัสนักเรียน: {profile.studentId}
+                </span>
+              )}
+            </div>
+            <p className="text-muted-foreground mt-1">
+              ยินดีต้อนรับ {profile?.displayName} &middot; เข้าร่วมห้องเรียน เช็คชื่อเข้าเรียน และส่งหนังสือใบลา
+            </p>
           </div>
           <div className="flex items-center gap-3">
             <button

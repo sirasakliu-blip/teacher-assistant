@@ -27,7 +27,7 @@ interface AuthContextValue {
     password: string,
     displayName: string,
     role: UserRole,
-    inviteCode?: string,
+    inviteCodeOrExtra?: string | { inviteCode?: string; studentId?: string },
   ) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -63,11 +63,61 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     password: string,
     displayName: string,
     role: UserRole,
-    inviteCode?: string,
+    inviteCodeOrExtra?: string | { inviteCode?: string; studentId?: string },
   ) {
     if (!auth || !db) throw new Error("Firebase is not configured.");
 
-    // Validation for Teacher role
+    const inviteCode =
+      typeof inviteCodeOrExtra === "string"
+        ? inviteCodeOrExtra
+        : inviteCodeOrExtra?.inviteCode;
+    const studentId =
+      typeof inviteCodeOrExtra === "object"
+        ? inviteCodeOrExtra?.studentId
+        : undefined;
+
+    // 1. Flow for Student role (with Student ID)
+    if (role === "student") {
+      const cleanStudentId = studentId?.trim();
+      if (!cleanStudentId) {
+        throw new Error("กรุณากรอกรหัสนักเรียน");
+      }
+
+      const syntheticEmail = `${cleanStudentId}@student.school.local`;
+      const syntheticPassword = `STD_PASS_${cleanStudentId}`;
+
+      let credential;
+      try {
+        credential = await createUserWithEmailAndPassword(auth, syntheticEmail, syntheticPassword);
+      } catch (authError: any) {
+        if (authError?.code === "auth/email-already-in-use") {
+          throw new Error("รหัสนักเรียนนี้ถูกลงทะเบียนไปแล้ว กรุณาเข้าสู่ระบบด้วยรหัสนักเรียนนี้");
+        }
+        throw authError;
+      }
+
+      await updateProfile(credential.user, { displayName });
+
+      const randomChars = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const parentViewToken = `PVT_${randomChars}`;
+
+      const userProfile = await createUserProfile(
+        credential.user.uid,
+        syntheticEmail,
+        displayName,
+        "student",
+        {
+          studentId: cleanStudentId,
+          parentViewToken,
+        },
+      );
+
+      setFirebaseUser(credential.user);
+      setProfile(userProfile);
+      return;
+    }
+
+    // 2. Validation & Transaction for Teacher role
     if (role === "teacher") {
       if (!inviteCode || !inviteCode.trim()) {
         throw new Error("กรุณากรอกรหัสลงทะเบียนบุคลากร");
@@ -98,6 +148,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             uid: credential.user.uid,
             email,
             displayName,
+            fullName: displayName,
             role: "teacher",
             inviteCodeUsed: cleanCode,
             linkedStudentIds: [],
@@ -129,7 +180,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Default flow for parent or other roles
+    // 3. Default flow for Parent role
     const credential = await createUserWithEmailAndPassword(auth, email, password);
     await updateProfile(credential.user, { displayName });
     const userProfile = await createUserProfile(
