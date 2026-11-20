@@ -54,6 +54,7 @@ export default function AdminDashboard() {
   const [studentExcelRows, setStudentExcelRows] = useState<any[]>([]);
   const [studentExcelFileName, setStudentExcelFileName] = useState("");
   const [importingStudents, setImportingStudents] = useState(false);
+  const [importProgress, setImportProgress] = useState<{ current: number; total: number; percent: number } | null>(null);
   const [studentImportResult, setStudentImportResult] = useState<{
     totalStudents: number;
     createdStudents: number;
@@ -388,6 +389,7 @@ export default function AdminDashboard() {
   async function handleExecuteStudentImport() {
     if (!studentExcelRows || studentExcelRows.length === 0) return;
     setImportingStudents(true);
+    setImportProgress({ current: 0, total: studentExcelRows.length, percent: 0 });
     try {
       const mappedStudents: Array<{ studentId: string; fullName: string; gradeLevel: string }> = [];
 
@@ -409,7 +411,17 @@ export default function AdminDashboard() {
         throw new Error("ไม่พบข้อมูลรหัสนักเรียนและชื่อ-นามสกุลในไฟล์ กรุณาตรวจสอบหัวตาราง");
       }
 
-      const result = await bulkImportStudentsAndClasses(mappedStudents, profile?.uid || "admin");
+      const result = await bulkImportStudentsAndClasses(
+        mappedStudents,
+        profile?.uid || "admin",
+        (current, total) => {
+          setImportProgress({
+            current,
+            total,
+            percent: Math.min(100, Math.round((current / total) * 100)),
+          });
+        },
+      );
       setStudentImportResult(result);
       toast({
         title: "นำเข้านักเรียนและจัดห้องเรียนสำเร็จ!",
@@ -424,6 +436,7 @@ export default function AdminDashboard() {
       });
     } finally {
       setImportingStudents(false);
+      setImportProgress(null);
     }
   }
 
@@ -1634,11 +1647,16 @@ export default function AdminDashboard() {
                   <button
                     onClick={handleExecuteStudentImport}
                     disabled={importingStudents}
-                    className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition disabled:opacity-50"
+                    className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition disabled:opacity-75"
                   >
                     {importingStudents ? (
                       <>
-                        <i className="fa-solid fa-circle-notch fa-spin" /> กำลังนำเข้าและสร้างห้องเรียน...
+                        <i className="fa-solid fa-circle-notch fa-spin text-sm" />
+                        <span>
+                          {importProgress
+                            ? `กำลังนำเข้า ${importProgress.current}/${importProgress.total} คน (${importProgress.percent}%)`
+                            : "กำลังเริ่มต้นนำเข้า..."}
+                        </span>
                       </>
                     ) : (
                       <>
@@ -1647,6 +1665,21 @@ export default function AdminDashboard() {
                     )}
                   </button>
                 </div>
+
+                {importingStudents && importProgress && (
+                  <div className="space-y-1.5 p-3 rounded-xl bg-emerald-50 border border-emerald-200 animate-in fade-in">
+                    <div className="flex items-center justify-between text-xs text-emerald-800 font-semibold">
+                      <span>กำลังประมวลผลข้อมูลนักเรียนแบบกลุ่ม (Batch)</span>
+                      <span>{importProgress.percent}% ({importProgress.current} จาก {importProgress.total} คน)</span>
+                    </div>
+                    <div className="w-full bg-emerald-100 rounded-full h-2.5 overflow-hidden">
+                      <div
+                        className="bg-emerald-600 h-2.5 rounded-full transition-all duration-200"
+                        style={{ width: `${importProgress.percent}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
 
                 <div className="overflow-x-auto border border-slate-100 rounded-xl">
                   <table className="w-full text-left text-xs">

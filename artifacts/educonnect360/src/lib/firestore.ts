@@ -21,6 +21,7 @@ import {
   Timestamp,
   updateDoc,
   where,
+  writeBatch,
   type Unsubscribe,
 } from "firebase/firestore";
 import { initializeApp, deleteApp } from "firebase/app";
@@ -2694,6 +2695,7 @@ export async function bulkImportStudentsAndClasses(
     gradeLevel?: string;
   }>,
   adminUid: string,
+  onProgress?: (current: number, total: number) => void,
 ): Promise<{
   totalStudents: number;
   createdStudents: number;
@@ -2704,6 +2706,43 @@ export async function bulkImportStudentsAndClasses(
   const roomsMap = new Map<string, Array<{ studentId: string; fullName: string; uid: string }>>();
   let createdStudents = 0;
 
+  // 1. Pre-fetch all existing student users in 1 single query instead of 500+ round trips!
+  const existingMap = new Map<string, string>(); // studentId -> uid
+  try {
+    const existingSnap = await getDocs(
+      query(collection(database, "users"), where("role", "==", "student")),
+    );
+    existingSnap.docs.forEach((d) => {
+      const data = d.data();
+      const sId = (data.studentId || "").toString().trim();
+      if (sId) existingMap.set(sId, d.id);
+    });
+  } catch (err) {
+    console.warn("Pre-fetch users error:", err);
+  }
+
+  // 2. Pre-fetch all existing classes in 1 single query!
+  const existingClassesMap = new Map<string, { id: string; studentIds: string[] }>();
+  try {
+    const classSnap = await getDocs(collection(database, "classes"));
+    classSnap.docs.forEach((d) => {
+      const cData = d.data();
+      if (cData.gradeLevel) {
+        existingClassesMap.set(cData.gradeLevel, {
+          id: d.id,
+          studentIds: cData.studentIds || [],
+        });
+      }
+    });
+  } catch (err) {
+    console.warn("Pre-fetch classes error:", err);
+  }
+
+  // 3. Process students in batches using writeBatch
+  let batch = writeBatch(database);
+  let opCount = 0;
+  let processed = 0;
+
   for (const item of studentsData) {
     const cleanId = (item.studentId || "").toString().trim().replace(/\s+/g, "");
     const cleanName = (item.fullName || "").trim();
@@ -2713,24 +2752,25 @@ export async function bulkImportStudentsAndClasses(
     const syntheticEmail = `${cleanId}@student.school.local`;
     const normalized = normalizeThaiName(cleanName);
 
-    const existingSnap = await getDocs(
-      query(collection(database, "users"), where("studentId", "==", cleanId)),
-    );
-
+    const existingUid = existingMap.get(cleanId);
     let uid = "";
-    if (!existingSnap.empty) {
-      uid = existingSnap.docs[0].id;
-      await updateDoc(doc(database, "users", uid), {
+
+    if (existingUid) {
+      uid = existingUid;
+      const userRef = doc(database, "users", uid);
+      batch.update(userRef, {
         gradeLevel: normalizedRoom,
         fullName: cleanName,
         displayName: cleanName,
         updatedAt: serverTimestamp(),
       });
+      opCount++;
     } else {
       uid = `std_${cleanId}`;
       const parentViewToken = generateParentViewToken();
 
-      await setDoc(doc(database, "parent_view_tokens", parentViewToken), {
+      const tokenRef = doc(database, "parent_view_tokens", parentViewToken);
+      batch.set(tokenRef, {
         token: parentViewToken,
         studentUid: uid,
         studentId: cleanId,
@@ -2739,8 +2779,10 @@ export async function bulkImportStudentsAndClasses(
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
+      opCount++;
 
-      await setDoc(doc(database, "users", uid), {
+      const userRef = doc(database, "users", uid);
+      batch.set(userRef, {
         uid,
         email: syntheticEmail,
         displayName: cleanName,
@@ -2756,11 +2798,9 @@ export async function bulkImportStudentsAndClasses(
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
+      opCount++;
 
-      syncStudentSummary(uid).catch((err) =>
-        console.error("Error creating student summary:", err),
-      );
-
+      existingMap.set(cleanId, uid);
       createdStudents++;
     }
 
@@ -2772,8 +2812,32 @@ export async function bulkImportStudentsAndClasses(
       fullName: cleanName,
       uid,
     });
+
+    processed++;
+    if (onProgress && processed % 20 === 0) {
+      onProgress(processed, studentsData.length);
+    }
+
+    // Commit batch if approaching Firestore limit of 500 operations
+    if (opCount >= 400) {
+      await batch.commit();
+      batch = writeBatch(database);
+      opCount = 0;
+    }
   }
 
+  // Commit remaining student batch operations
+  if (opCount > 0) {
+    await batch.commit();
+    batch = writeBatch(database);
+    opCount = 0;
+  }
+
+  if (onProgress) {
+    onProgress(studentsData.length, studentsData.length);
+  }
+
+  // 4. Batch update or create classes
   const classList: string[] = [];
   const covers: ClassCover[] = ["emerald", "teal", "cyan", "blue", "indigo", "violet"];
   let coverIdx = 0;
@@ -2782,23 +2846,20 @@ export async function bulkImportStudentsAndClasses(
     classList.push(room);
     const studentUids = studentsInRoom.map((s) => s.uid);
 
-    const classQ = query(
-      collection(database, "classes"),
-      where("gradeLevel", "==", room),
-    );
-    const classSnap = await getDocs(classQ);
+    const existingClass = existingClassesMap.get(room);
 
-    if (!classSnap.empty) {
-      const classDoc = classSnap.docs[0];
-      const existingStudentIds: string[] = classDoc.data().studentIds || [];
-      const mergedIds = Array.from(new Set([...existingStudentIds, ...studentUids]));
-      await updateDoc(doc(database, "classes", classDoc.id), {
+    if (existingClass) {
+      const mergedIds = Array.from(new Set([...existingClass.studentIds, ...studentUids]));
+      const classRef = doc(database, "classes", existingClass.id);
+      batch.update(classRef, {
         studentIds: mergedIds,
         updatedAt: serverTimestamp(),
       });
+      opCount++;
     } else {
+      const classRef = doc(collection(database, "classes"));
       const randomCode = `CLS-${room.replace(/[^a-zA-Z0-9ก-๙]/g, "")}-${Math.floor(10 + Math.random() * 90)}`;
-      await addDoc(collection(database, "classes"), {
+      batch.set(classRef, {
         name: `ห้องเรียน ${room}`,
         gradeLevel: room,
         teacherId: adminUid || "school_admin",
@@ -2808,8 +2869,19 @@ export async function bulkImportStudentsAndClasses(
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
+      opCount++;
       coverIdx++;
     }
+
+    if (opCount >= 400) {
+      await batch.commit();
+      batch = writeBatch(database);
+      opCount = 0;
+    }
+  }
+
+  if (opCount > 0) {
+    await batch.commit();
   }
 
   return {
