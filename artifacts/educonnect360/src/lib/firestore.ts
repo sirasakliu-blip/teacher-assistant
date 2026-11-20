@@ -32,6 +32,7 @@ import {
 import { db, firebaseConfig } from "@/lib/firebase";
 import type {
   AdminWhitelist,
+  Announcement,
   Assignment,
   Attendance,
   AttendanceStatus,
@@ -44,6 +45,7 @@ import type {
   StudentRiskEntry,
   StudentSummary,
   Submission,
+  TeacherContact,
   TeacherInvite,
   User,
   UserRole,
@@ -1985,3 +1987,175 @@ export async function createStudentAccountByStaff(input: {
     updatedAt: new Date().toISOString(),
   };
 }
+
+/** Updates a teacher's contact details (Name, Phone number, LINE ID). */
+export async function updateTeacherContactProfile(
+  teacherUid: string,
+  data: { displayName?: string; phoneNumber?: string; lineId?: string },
+): Promise<void> {
+  const database = requireDb();
+  const ref = doc(database, "users", teacherUid);
+  const payload: Record<string, any> = {
+    updatedAt: serverTimestamp(),
+  };
+  if (data.displayName !== undefined) payload.displayName = data.displayName.trim();
+  if (data.displayName !== undefined) payload.fullName = data.displayName.trim();
+  if (data.phoneNumber !== undefined) payload.phoneNumber = data.phoneNumber.trim();
+  if (data.lineId !== undefined) payload.lineId = data.lineId.trim();
+
+  await updateDoc(ref, payload);
+}
+
+/** Retrieves contact details for all teachers associated with a student's enrolled classes. */
+export async function getTeacherContactsForStudent(studentUid: string): Promise<TeacherContact[]> {
+  const database = requireDb();
+  const classes = await getClassesForStudent(studentUid);
+  if (classes.length === 0) return [];
+
+  const teacherMap = new Map<string, TeacherContact>();
+
+  for (const cls of classes) {
+    if (!cls.teacherId) continue;
+    if (!teacherMap.has(cls.teacherId)) {
+      try {
+        const teacherSnap = await getDoc(doc(database, "users", cls.teacherId));
+        if (teacherSnap.exists()) {
+          const tData = teacherSnap.data();
+          teacherMap.set(cls.teacherId, {
+            teacherId: cls.teacherId,
+            teacherName: tData.fullName || tData.displayName || cls.teacherName || "ครูประจำชั้น",
+            subjectName: cls.name,
+            phoneNumber: tData.phoneNumber || "",
+            lineId: tData.lineId || "",
+            email: tData.email || "",
+          });
+        } else {
+          teacherMap.set(cls.teacherId, {
+            teacherId: cls.teacherId,
+            teacherName: cls.teacherName || "ครูประจำชั้น",
+            subjectName: cls.name,
+            phoneNumber: "",
+            lineId: "",
+          });
+        }
+      } catch (err) {
+        console.warn("Error fetching teacher contact:", err);
+        teacherMap.set(cls.teacherId, {
+          teacherId: cls.teacherId,
+          teacherName: cls.teacherName || "ครูประจำชั้น",
+          subjectName: cls.name,
+          phoneNumber: "",
+          lineId: "",
+        });
+      }
+    }
+  }
+
+  return Array.from(teacherMap.values());
+}
+
+/** Creates a new announcement post. */
+export async function createAnnouncement(input: {
+  classId?: string;
+  className?: string;
+  teacherId: string;
+  teacherName: string;
+  title: string;
+  content: string;
+  priority?: "normal" | "urgent";
+}): Promise<Announcement> {
+  const database = requireDb();
+  const payload = {
+    classId: input.classId || null,
+    className: input.className || null,
+    teacherId: input.teacherId,
+    teacherName: input.teacherName,
+    title: input.title.trim(),
+    content: input.content.trim(),
+    priority: input.priority || "normal",
+    createdAt: serverTimestamp(),
+  };
+
+  const docRef = await addDoc(collection(database, "announcements"), payload);
+  return {
+    id: docRef.id,
+    ...payload,
+    classId: input.classId,
+    className: input.className,
+    priority: input.priority || "normal",
+    createdAt: new Date().toISOString(),
+  };
+}
+
+/** Retrieves announcements relevant to a student (by their enrolled classes). */
+export async function getAnnouncementsForStudent(studentUid: string): Promise<Announcement[]> {
+  const database = requireDb();
+  const classes = await getClassesForStudent(studentUid);
+  const classIds = classes.map((c) => c.id);
+
+  try {
+    const snap = await getDocs(
+      query(collection(database, "announcements"), orderBy("createdAt", "desc")),
+    );
+    return snap.docs
+      .map((d) => {
+        const data = d.data();
+        return {
+          id: d.id,
+          classId: data.classId || undefined,
+          className: data.className || undefined,
+          teacherId: data.teacherId || "",
+          teacherName: data.teacherName || "คุณครู",
+          title: data.title || "",
+          content: data.content || "",
+          priority: data.priority || "normal",
+          createdAt: tsToISO(data.createdAt),
+        };
+      })
+      .filter((a) => !a.classId || classIds.includes(a.classId));
+  } catch (err) {
+    console.warn("Failed to query announcements:", err);
+    return [];
+  }
+}
+
+/** Retrieves homework/assignments and their submission status for a student. */
+export async function getStudentHomeworkDetailed(studentUid: string) {
+  const classes = await getClassesForStudent(studentUid);
+  const homeworkList: Array<{
+    id: string;
+    classId: string;
+    className: string;
+    title: string;
+    description: string;
+    dueDate: string;
+    maxScore: number;
+    submission: Submission | null;
+    status: "submitted" | "missing" | "late" | "graded" | "open";
+  }> = [];
+
+  for (const c of classes) {
+    const assignments = await getAssignmentsForClass(c.id);
+    for (const a of assignments) {
+      const sub = await getSubmissionForStudent(a.id, studentUid);
+      const derived = deriveSubmissionStatus(a, sub ?? undefined);
+      homeworkList.push({
+        id: a.id,
+        classId: c.id,
+        className: c.name,
+        title: a.title,
+        description: a.description,
+        dueDate: a.dueDate,
+        maxScore: a.maxScore,
+        submission: sub,
+        status: derived.status,
+      });
+    }
+  }
+
+  return {
+    classes,
+    homeworkList: homeworkList.sort((a, b) => b.dueDate.localeCompare(a.dueDate)),
+  };
+}
+

@@ -17,6 +17,8 @@ export interface User {
   fullName?: string;
   searchName?: string; // Normalized first name without prefixes for smart search
   normalizedFullName?: string; // Full name without prefixes
+  phoneNumber?: string; // Teacher or user phone number
+  lineId?: string; // Teacher or user LINE ID
   photoURL?: string | null;
   role: UserRole;
   studentId?: string; // e.g. "67105"
@@ -223,4 +225,28 @@ export interface ParentLineLink {
   studentName: string;
   linkedAt: string;
 }
+
+/** Announcement post created by a teacher. */
+export interface Announcement {
+  id: string;
+  classId?: string;
+  className?: string;
+  teacherId: string;
+  teacherName: string;
+  title: string;
+  content: string;
+  priority?: "normal" | "urgent";
+  createdAt: string;
+}
+
+/** Contact information for a teacher. */
+export interface TeacherContact {
+  teacherId: string;
+  teacherName: string;
+  subjectName?: string;
+  phoneNumber?: string;
+  lineId?: string;
+  email?: string;
+}
+
 

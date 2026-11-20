@@ -145,5 +145,13 @@ service cloud.firestore {
     match /parent_line_links/{lineUserId} {
       allow read, write: if true;
     }
+
+    // =========================================================================
+    // 9. Announcements Collection
+    // =========================================================================
+    match /announcements/{announcementId} {
+      allow read: if true;
+      allow create, update, delete: if isTeacher();
+    }
   }
 }

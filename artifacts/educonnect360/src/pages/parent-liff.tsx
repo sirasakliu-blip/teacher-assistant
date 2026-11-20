@@ -16,8 +16,27 @@ import {
   linkParentLineUser,
   getStudentSummary,
   searchStudentsByQuery,
+  getTeacherContactsForStudent,
+  getStudentHomeworkDetailed,
+  getLeaveRequestsForStudent,
+  getAnnouncementsForStudent,
 } from "@/lib/firestore";
-import type { StudentSummary, User } from "@/types";
+import type {
+  Announcement,
+  Class,
+  LeaveRequest,
+  StudentSummary,
+  TeacherContact,
+  User,
+} from "@/types";
+
+type LiffTab =
+  | "attendance"
+  | "assignments"
+  | "leave"
+  | "schedule"
+  | "announcements"
+  | "contact";
 
 export default function ParentLiff() {
   const { toast } = useToast();
@@ -41,6 +60,38 @@ export default function ParentLiff() {
   const [hasSearched, setHasSearched] = useState(false);
   const [linkingStudentId, setLinkingStudentId] = useState<string | null>(null);
 
+  // Active Tab state (defaults to attendance or URL ?tab=...)
+  const [activeTab, setActiveTab] = useState<LiffTab>("attendance");
+
+  // Detailed student sub-features
+  const [loadingDetails, setLoadingDetails] = useState(false);
+  const [homeworkList, setHomeworkList] = useState<any[]>([]);
+  const [studentClasses, setStudentClasses] = useState<Class[]>([]);
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [teacherContacts, setTeacherContacts] = useState<TeacherContact[]>([]);
+
+  async function loadStudentDetails(studentUid: string) {
+    setLoadingDetails(true);
+    try {
+      const [teachers, hwData, leaves, ann] = await Promise.all([
+        getTeacherContactsForStudent(studentUid),
+        getStudentHomeworkDetailed(studentUid),
+        getLeaveRequestsForStudent(studentUid),
+        getAnnouncementsForStudent(studentUid),
+      ]);
+      setTeacherContacts(teachers);
+      setHomeworkList(hwData.homeworkList);
+      setStudentClasses(hwData.classes);
+      setLeaveRequests(leaves);
+      setAnnouncements(ann);
+    } catch (err) {
+      console.warn("Error loading student details:", err);
+    } finally {
+      setLoadingDetails(false);
+    }
+  }
+
   useEffect(() => {
     async function setup() {
       setInitializing(true);
@@ -52,6 +103,16 @@ export default function ParentLiff() {
 
         const fromRichMenu = sourceParam === "richmenu" || devParam;
         setIsRichMenuSource(fromRichMenu);
+
+        const tabParam = params.get("tab") as LiffTab | null;
+        if (
+          tabParam &&
+          ["attendance", "assignments", "leave", "schedule", "announcements", "contact"].includes(
+            tabParam,
+          )
+        ) {
+          setActiveTab(tabParam);
+        }
 
         // Ensure Firebase Auth session exists so Firestore rules allow reads
         if (auth && !auth.currentUser) {
@@ -105,6 +166,7 @@ export default function ParentLiff() {
         if (summary) {
           setCurrentSummary(summary);
           setIsChangingStudent(false);
+          loadStudentDetails(summary.studentUid);
         } else {
           setIsChangingStudent(true);
         }
@@ -177,6 +239,9 @@ export default function ParentLiff() {
       setSearchQuery("");
       setSearchResults([]);
       setHasSearched(false);
+      if (summary) {
+        loadStudentDetails(summary.studentUid);
+      }
 
       toast({
         title: "ผูกบัญชีสำเร็จ",
@@ -480,128 +545,617 @@ export default function ParentLiff() {
               </div>
             </div>
 
-            {/* Today's Status Box (High Prominence) */}
-            <div
-              className={`rounded-3xl p-5 border-2 shadow-sm space-y-1 ${
-                currentSummary.todayAttendance.status === "present"
-                  ? "bg-emerald-50/80 border-emerald-400 text-emerald-950"
-                  : currentSummary.todayAttendance.status === "late"
-                  ? "bg-amber-50/80 border-amber-400 text-amber-950"
-                  : currentSummary.todayAttendance.status === "excused"
-                  ? "bg-sky-50/80 border-sky-400 text-sky-950"
-                  : currentSummary.todayAttendance.status === "absent"
-                  ? "bg-rose-50/80 border-rose-400 text-rose-950"
-                  : "bg-slate-50 border-slate-300 text-slate-800"
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-bold uppercase tracking-wider opacity-70">
-                  สถานะการเข้าเรียนวันนี้
-                </p>
-                <span className="text-xs opacity-70 font-mono">
-                  {new Date().toLocaleDateString("th-TH", {
-                    day: "numeric",
-                    month: "short",
-                    year: "numeric",
-                  })}
-                </span>
-              </div>
+            {/* 6 Rich Menu Features Tab Bar */}
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setActiveTab("attendance")}
+                className={`p-2.5 rounded-2xl flex flex-col items-center justify-center text-center transition-all ${
+                  activeTab === "attendance"
+                    ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/30 font-bold scale-[1.02]"
+                    : "bg-white text-slate-700 hover:bg-slate-50 border border-slate-200/80 font-medium"
+                }`}
+              >
+                <i
+                  className={`fa-solid fa-clipboard-check text-xl mb-1 ${
+                    activeTab === "attendance" ? "text-white" : "text-emerald-600"
+                  }`}
+                />
+                <span className="text-xs font-bold leading-tight">เช็คชื่อ</span>
+                <span className="text-[10px] opacity-70">การเข้าเรียน</span>
+              </button>
 
-              <p className="text-2xl font-black tracking-tight pt-1">
-                {currentSummary.todayAttendance.status === "present" && "🟢 วันนี้: มาเรียนปกติ"}
-                {currentSummary.todayAttendance.status === "late" && "🟡 วันนี้: มาสาย"}
-                {currentSummary.todayAttendance.status === "excused" && "🔵 วันนี้: ลา (มีใบลา)"}
-                {currentSummary.todayAttendance.status === "absent" && "🔴 วันนี้: ขาดเรียน"}
-                {currentSummary.todayAttendance.status === "none" && "⚪ ยังไม่มีบันทึกการเช็กชื่อวันนี้"}
-              </p>
+              <button
+                type="button"
+                onClick={() => setActiveTab("assignments")}
+                className={`p-2.5 rounded-2xl flex flex-col items-center justify-center text-center transition-all ${
+                  activeTab === "assignments"
+                    ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/30 font-bold scale-[1.02]"
+                    : "bg-white text-slate-700 hover:bg-slate-50 border border-slate-200/80 font-medium"
+                }`}
+              >
+                <i
+                  className={`fa-solid fa-list-check text-xl mb-1 ${
+                    activeTab === "assignments" ? "text-white" : "text-amber-600"
+                  }`}
+                />
+                <span className="text-xs font-bold leading-tight">การบ้าน</span>
+                <span className="text-[10px] opacity-70">งานค้าง</span>
+              </button>
 
-              <p className="text-xs opacity-80 pt-0.5">
-                {currentSummary.todayAttendance.time
-                  ? `เช็กชื่อเวลา: ${currentSummary.todayAttendance.time}`
-                  : currentSummary.todayAttendance.status === "none"
-                  ? "รอคุณครูประจำวิชาบันทึกข้อมูล"
-                  : "บันทึกในระบบเรียบร้อย"}
-              </p>
+              <button
+                type="button"
+                onClick={() => setActiveTab("leave")}
+                className={`p-2.5 rounded-2xl flex flex-col items-center justify-center text-center transition-all ${
+                  activeTab === "leave"
+                    ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/30 font-bold scale-[1.02]"
+                    : "bg-white text-slate-700 hover:bg-slate-50 border border-slate-200/80 font-medium"
+                }`}
+              >
+                <i
+                  className={`fa-solid fa-file-signature text-xl mb-1 ${
+                    activeTab === "leave" ? "text-white" : "text-sky-600"
+                  }`}
+                />
+                <span className="text-xs font-bold leading-tight">แจ้งลา</span>
+                <span className="text-[10px] opacity-70">ใบลาเรียน</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab("schedule")}
+                className={`p-2.5 rounded-2xl flex flex-col items-center justify-center text-center transition-all ${
+                  activeTab === "schedule"
+                    ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/30 font-bold scale-[1.02]"
+                    : "bg-white text-slate-700 hover:bg-slate-50 border border-slate-200/80 font-medium"
+                }`}
+              >
+                <i
+                  className={`fa-solid fa-clock text-xl mb-1 ${
+                    activeTab === "schedule" ? "text-white" : "text-indigo-600"
+                  }`}
+                />
+                <span className="text-xs font-bold leading-tight">ตารางเรียน</span>
+                <span className="text-[10px] opacity-70">รายวิชา</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab("announcements")}
+                className={`p-2.5 rounded-2xl flex flex-col items-center justify-center text-center transition-all ${
+                  activeTab === "announcements"
+                    ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/30 font-bold scale-[1.02]"
+                    : "bg-white text-slate-700 hover:bg-slate-50 border border-slate-200/80 font-medium"
+                }`}
+              >
+                <i
+                  className={`fa-solid fa-bullhorn text-xl mb-1 ${
+                    activeTab === "announcements" ? "text-white" : "text-rose-600"
+                  }`}
+                />
+                <span className="text-xs font-bold leading-tight">ประกาศ</span>
+                <span className="text-[10px] opacity-70">จากครู</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab("contact")}
+                className={`p-2.5 rounded-2xl flex flex-col items-center justify-center text-center transition-all ${
+                  activeTab === "contact"
+                    ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/30 font-bold scale-[1.02]"
+                    : "bg-white text-slate-700 hover:bg-slate-50 border border-slate-200/80 font-medium"
+                }`}
+              >
+                <i
+                  className={`fa-solid fa-phone text-xl mb-1 ${
+                    activeTab === "contact" ? "text-white" : "text-emerald-600"
+                  }`}
+                />
+                <span className="text-xs font-bold leading-tight">ติดต่อครู</span>
+                <span className="text-[10px] opacity-70">เบอร์ / LINE</span>
+              </button>
             </div>
 
-            {/* Attendance Accumulation Statistics */}
-            <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-sm space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                  <i className="fa-solid fa-chart-pie text-emerald-600" />
-                  สถิติการเข้าเรียนสะสม
-                </h3>
-                <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                  รวม {currentSummary.attendanceStats.rate}%
-                </span>
+            {/* TAB 1: ATTENDANCE & GRADES */}
+            {activeTab === "attendance" && (
+              <div className="space-y-4 animate-in fade-in">
+                {/* Today's Status Box */}
+                <div
+                  className={`rounded-3xl p-5 border-2 shadow-sm space-y-1 ${
+                    currentSummary.todayAttendance.status === "present"
+                      ? "bg-emerald-50/80 border-emerald-400 text-emerald-950"
+                      : currentSummary.todayAttendance.status === "late"
+                      ? "bg-amber-50/80 border-amber-400 text-amber-950"
+                      : currentSummary.todayAttendance.status === "excused"
+                      ? "bg-sky-50/80 border-sky-400 text-sky-950"
+                      : currentSummary.todayAttendance.status === "absent"
+                      ? "bg-rose-50/80 border-rose-400 text-rose-950"
+                      : "bg-slate-50 border-slate-300 text-slate-800"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-bold uppercase tracking-wider opacity-70">
+                      สถานะการเข้าเรียนวันนี้
+                    </p>
+                    <span className="text-xs opacity-70 font-mono">
+                      {new Date().toLocaleDateString("th-TH", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })}
+                    </span>
+                  </div>
+
+                  <p className="text-2xl font-black tracking-tight pt-1">
+                    {currentSummary.todayAttendance.status === "present" && "🟢 วันนี้: มาเรียนปกติ"}
+                    {currentSummary.todayAttendance.status === "late" && "🟡 วันนี้: มาสาย"}
+                    {currentSummary.todayAttendance.status === "excused" && "🔵 วันนี้: ลา (มีใบลา)"}
+                    {currentSummary.todayAttendance.status === "absent" && "🔴 วันนี้: ขาดเรียน"}
+                    {currentSummary.todayAttendance.status === "none" && "⚪ ยังไม่มีบันทึกการเช็กชื่อวันนี้"}
+                  </p>
+
+                  <p className="text-xs opacity-80 pt-0.5">
+                    {currentSummary.todayAttendance.time
+                      ? `เช็กชื่อเวลา: ${currentSummary.todayAttendance.time}`
+                      : currentSummary.todayAttendance.status === "none"
+                      ? "รอคุณครูประจำวิชาบันทึกข้อมูล"
+                      : "บันทึกในระบบเรียบร้อย"}
+                  </p>
+                </div>
+
+                {/* Attendance Accumulation Statistics */}
+                <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-sm space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <i className="fa-solid fa-chart-pie text-emerald-600" />
+                      สถิติการเข้าเรียนสะสม
+                    </h3>
+                    <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                      รวม {currentSummary.attendanceStats.rate}%
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-2 text-center pt-1">
+                    <div className="p-3 rounded-2xl bg-emerald-50/70 border border-emerald-100">
+                      <p className="text-2xl font-black text-emerald-700">
+                        {currentSummary.attendanceStats.present}
+                      </p>
+                      <p className="text-xs font-semibold text-emerald-900 mt-0.5">มาเรียน</p>
+                    </div>
+
+                    <div className="p-3 rounded-2xl bg-amber-50/70 border border-amber-100">
+                      <p className="text-2xl font-black text-amber-600">
+                        {currentSummary.attendanceStats.late}
+                      </p>
+                      <p className="text-xs font-semibold text-amber-900 mt-0.5">มาสาย</p>
+                    </div>
+
+                    <div className="p-3 rounded-2xl bg-sky-50/70 border border-sky-100">
+                      <p className="text-2xl font-black text-sky-600">
+                        {currentSummary.attendanceStats.excused}
+                      </p>
+                      <p className="text-xs font-semibold text-sky-900 mt-0.5">ลา</p>
+                    </div>
+
+                    <div className="p-3 rounded-2xl bg-rose-50/70 border border-rose-100">
+                      <p className="text-2xl font-black text-rose-600">
+                        {currentSummary.attendanceStats.absent}
+                      </p>
+                      <p className="text-xs font-semibold text-rose-900 mt-0.5">ขาด</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Academic Grades Section */}
+                <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-sm space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <i className="fa-solid fa-graduation-cap text-emerald-600" />
+                      ผลการเรียนรายวิชา
+                    </h3>
+                    {currentSummary.gpa !== undefined && (
+                      <span className="text-xs font-bold text-slate-700 font-mono">
+                        เกรดเฉลี่ย: {Number(currentSummary.gpa).toFixed(2)}
+                      </span>
+                    )}
+                  </div>
+
+                  {currentSummary.grades.length === 0 ? (
+                    <p className="text-xs text-slate-400 text-center py-4">ยังไม่มีข้อมูลเกรด</p>
+                  ) : (
+                    <div className="divide-y divide-slate-100 text-xs">
+                      {currentSummary.grades.map((g, idx) => (
+                        <div key={idx} className="py-2.5 flex items-center justify-between gap-2">
+                          <div className="flex-1 pr-2">
+                            <p className="font-bold text-slate-900 text-sm">{g.subjectName}</p>
+                            <p className="text-slate-400 text-[11px]">คะแนน: {g.score}/{g.maxScore}</p>
+                          </div>
+                          <div className="text-right">
+                            <span className="inline-block px-2.5 py-1 rounded-xl bg-emerald-50 text-emerald-800 font-bold text-sm border border-emerald-200">
+                              เกรด {g.grade}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
+            )}
 
-              {/* 4 Large Number Cards */}
-              <div className="grid grid-cols-4 gap-2 text-center pt-1">
-                <div className="p-3 rounded-2xl bg-emerald-50/70 border border-emerald-100">
-                  <p className="text-2xl font-black text-emerald-700">
-                    {currentSummary.attendanceStats.present}
-                  </p>
-                  <p className="text-xs font-semibold text-emerald-900 mt-0.5">มาเรียน</p>
-                </div>
-
-                <div className="p-3 rounded-2xl bg-amber-50/70 border border-amber-100">
-                  <p className="text-2xl font-black text-amber-600">
-                    {currentSummary.attendanceStats.late}
-                  </p>
-                  <p className="text-xs font-semibold text-amber-900 mt-0.5">มาสาย</p>
-                </div>
-
-                <div className="p-3 rounded-2xl bg-sky-50/70 border border-sky-100">
-                  <p className="text-2xl font-black text-sky-600">
-                    {currentSummary.attendanceStats.excused}
-                  </p>
-                  <p className="text-xs font-semibold text-sky-900 mt-0.5">ลา</p>
-                </div>
-
-                <div className="p-3 rounded-2xl bg-rose-50/70 border border-rose-100">
-                  <p className="text-2xl font-black text-rose-600">
-                    {currentSummary.attendanceStats.absent}
-                  </p>
-                  <p className="text-xs font-semibold text-rose-900 mt-0.5">ขาด</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Academic Grades Section */}
-            <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-sm space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                  <i className="fa-solid fa-graduation-cap text-emerald-600" />
-                  ผลการเรียนรายวิชา
-                </h3>
-                {currentSummary.gpa !== undefined && (
-                  <span className="text-xs font-bold text-slate-700 font-mono">
-                    เกรดเฉลี่ย: {Number(currentSummary.gpa).toFixed(2)}
-                  </span>
-                )}
-              </div>
-
-              {currentSummary.grades.length === 0 ? (
-                <p className="text-xs text-slate-400 text-center py-4">ยังไม่มีข้อมูลเกรด</p>
-              ) : (
-                <div className="divide-y divide-slate-100 text-xs">
-                  {currentSummary.grades.map((g, idx) => (
-                    <div key={idx} className="py-2.5 flex items-center justify-between gap-2">
-                      <div className="flex-1 pr-2">
-                        <p className="font-bold text-slate-900 text-sm">{g.subjectName}</p>
-                        <p className="text-slate-400 text-[11px]">คะแนน: {g.score}/{g.maxScore}</p>
-                      </div>
-                      <div className="text-right">
-                        <span className="inline-block px-2.5 py-1 rounded-xl bg-emerald-50 text-emerald-800 font-bold text-sm border border-emerald-200">
-                          เกรด {g.grade}
+            {/* TAB 2: ASSIGNMENTS & HOMEWORK */}
+            {activeTab === "assignments" && (
+              <div className="space-y-4 animate-in fade-in">
+                {/* Summary Box */}
+                {(() => {
+                  const missingCount = homeworkList.filter(
+                    (h) => h.status === "missing" || h.status === "late",
+                  ).length;
+                  return (
+                    <div
+                      className={`rounded-3xl p-5 border-2 shadow-sm space-y-2 ${
+                        missingCount > 0
+                          ? "bg-rose-50/80 border-rose-300 text-rose-950"
+                          : "bg-emerald-50/80 border-emerald-300 text-emerald-950"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold uppercase tracking-wider opacity-70">
+                          สรุปสถานะการบ้าน
+                        </span>
+                        <span className="text-xs font-bold">
+                          ทั้งหมด {homeworkList.length} งาน
                         </span>
                       </div>
+                      <p className="text-2xl font-black">
+                        {missingCount > 0 ? `⚠️ มีงานค้างส่ง ${missingCount} ชิ้น` : "🎉 ส่งงานครบทุกชิ้นแล้ว"}
+                      </p>
+                      <p className="text-xs opacity-80">
+                        {missingCount > 0
+                          ? "กรุณาช่วยติดตามให้นักเรียนส่งงานตามกำหนด เพื่อรักษาผลการเรียน"
+                          : "นักเรียนส่งงานครบถ้วนตรงเวลา ยอดเยี่ยมมากครับ"}
+                      </p>
                     </div>
-                  ))}
+                  );
+                })()}
+
+                {/* Homework List */}
+                <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-sm space-y-3">
+                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <i className="fa-solid fa-list-check text-amber-600" />
+                    รายการการบ้านและงานที่ได้รับมอบหมาย
+                  </h3>
+
+                  {loadingDetails ? (
+                    <div className="py-8 text-center text-slate-400 text-xs">
+                      <i className="fa-solid fa-circle-notch fa-spin text-emerald-600 text-xl block mb-2 mx-auto" />
+                      กำลังโหลดรายการการบ้าน...
+                    </div>
+                  ) : homeworkList.length === 0 ? (
+                    <p className="text-xs text-slate-400 text-center py-6">
+                      ยังไม่มีการสั่งการบ้านในขณะนี้
+                    </p>
+                  ) : (
+                    <div className="divide-y divide-slate-100 space-y-2">
+                      {homeworkList.map((hw) => (
+                        <div key={hw.id} className="pt-3 first:pt-0 space-y-1.5">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="font-bold text-slate-900 text-sm leading-snug">
+                                {hw.title}
+                              </p>
+                              <p className="text-xs text-slate-500">{hw.className}</p>
+                            </div>
+                            <div>
+                              {hw.status === "missing" ? (
+                                <span className="px-2.5 py-1 rounded-xl text-xs font-bold bg-rose-100 text-rose-700 border border-rose-200 shrink-0">
+                                  ยังไม่ส่ง
+                                </span>
+                              ) : hw.status === "graded" ? (
+                                <span className="px-2.5 py-1 rounded-xl text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
+                                  ได้ {hw.submission?.score}/{hw.maxScore} คะแนน
+                                </span>
+                              ) : hw.status === "submitted" ? (
+                                <span className="px-2.5 py-1 rounded-xl text-xs font-bold bg-sky-100 text-sky-800 border border-sky-200 shrink-0">
+                                  ส่งแล้ว รอตรวจ
+                                </span>
+                              ) : hw.status === "late" ? (
+                                <span className="px-2.5 py-1 rounded-xl text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200 shrink-0">
+                                  ส่งช้า
+                                </span>
+                              ) : (
+                                <span className="px-2.5 py-1 rounded-xl text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200 shrink-0">
+                                  เปิดรับงาน
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3 text-[11px] text-slate-400">
+                            <span>
+                              <i className="fa-regular fa-clock mr-1" />
+                              กำหนดส่ง: {hw.dueDate}
+                            </span>
+                            <span>คะแนนเต็ม: {hw.maxScore}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
+
+            {/* TAB 3: LEAVE REQUESTS */}
+            {activeTab === "leave" && (
+              <div className="space-y-4 animate-in fade-in">
+                <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-sm space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <i className="fa-solid fa-file-signature text-sky-600" />
+                      ประวัติการลาเรียนของบุตรหลาน
+                    </h3>
+                    <span className="text-xs text-slate-400">
+                      ทั้งหมด {leaveRequests.length} ฉบับ
+                    </span>
+                  </div>
+
+                  {loadingDetails ? (
+                    <div className="py-8 text-center text-slate-400 text-xs">
+                      <i className="fa-solid fa-circle-notch fa-spin text-emerald-600 text-xl block mb-2 mx-auto" />
+                      กำลังโหลดประวัติการลา...
+                    </div>
+                  ) : leaveRequests.length === 0 ? (
+                    <div className="p-8 text-center space-y-2">
+                      <i className="fa-solid fa-file-circle-check text-3xl text-slate-300 block mx-auto" />
+                      <p className="text-sm font-semibold text-slate-700">ไม่มีประวัติการลาเรียน</p>
+                      <p className="text-xs text-slate-400">
+                        บุตรหลานของท่านยังไม่มีรายการยื่นใบลาในระบบ
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-100 space-y-3">
+                      {leaveRequests.map((req) => (
+                        <div key={req.id} className="pt-3 first:pt-0 space-y-1.5">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <span
+                                className={`inline-block px-2 py-0.5 rounded-md text-[11px] font-bold mb-1 ${
+                                  req.type === "sick"
+                                    ? "bg-rose-100 text-rose-700"
+                                    : "bg-indigo-100 text-indigo-700"
+                                }`}
+                              >
+                                {req.type === "sick" ? "ลาป่วย" : "ขอลากิจ"}
+                              </span>
+                              <p className="text-sm font-bold text-slate-900">
+                                {req.startDate === req.endDate
+                                  ? `วันที่: ${req.startDate}`
+                                  : `${req.startDate} ถึง ${req.endDate}`}
+                                <span className="text-xs font-normal text-slate-500 ml-1.5">
+                                  ({req.daysCount} วัน)
+                                </span>
+                              </p>
+                            </div>
+
+                            <span
+                              className={`px-2.5 py-1 rounded-xl text-xs font-bold ${
+                                req.status === "approved"
+                                  ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                                  : req.status === "rejected"
+                                  ? "bg-rose-100 text-rose-800 border border-rose-200"
+                                  : "bg-amber-100 text-amber-800 border border-amber-200"
+                              }`}
+                            >
+                              {req.status === "approved"
+                                ? "อนุมัติแล้ว"
+                                : req.status === "rejected"
+                                ? "ไม่อนุมัติ"
+                                : "รอคุณครูอนุมัติ"}
+                            </span>
+                          </div>
+
+                          <p className="text-xs text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                            <strong>สาเหตุ:</strong> {req.reason}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* TAB 4: SCHEDULE & CLASSES */}
+            {activeTab === "schedule" && (
+              <div className="space-y-4 animate-in fade-in">
+                <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-sm space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <i className="fa-solid fa-clock text-indigo-600" />
+                      ห้องเรียนและวิชาที่ลงทะเบียน
+                    </h3>
+                    <span className="text-xs text-slate-400">
+                      {studentClasses.length} วิชา
+                    </span>
+                  </div>
+
+                  {loadingDetails ? (
+                    <div className="py-8 text-center text-slate-400 text-xs">
+                      <i className="fa-solid fa-circle-notch fa-spin text-emerald-600 text-xl block mb-2 mx-auto" />
+                      กำลังโหลดข้อมูลห้องเรียน...
+                    </div>
+                  ) : studentClasses.length === 0 ? (
+                    <p className="text-xs text-slate-400 text-center py-6">
+                      ยังไม่มีรายวิชาที่ลงทะเบียน
+                    </p>
+                  ) : (
+                    <div className="divide-y divide-slate-100 space-y-3">
+                      {studentClasses.map((cls) => (
+                        <div key={cls.id} className="pt-3 first:pt-0 flex items-center justify-between gap-3">
+                          <div className="space-y-0.5">
+                            <p className="font-bold text-slate-900 text-sm">{cls.name}</p>
+                            <p className="text-xs text-slate-500">
+                              ครูผู้สอน: {cls.teacherName || "คุณครู"} &middot; ชั้น: {cls.gradeLevel}
+                            </p>
+                          </div>
+                          <span className="font-mono text-xs font-bold text-primary bg-primary/10 px-2.5 py-1 rounded-lg border border-primary/20 shrink-0">
+                            รหัส: {cls.joinCode}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* TAB 5: ANNOUNCEMENTS */}
+            {activeTab === "announcements" && (
+              <div className="space-y-4 animate-in fade-in">
+                <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-sm space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <i className="fa-solid fa-bullhorn text-rose-600" />
+                      ประกาศและข่าวสารจากคุณครู
+                    </h3>
+                    <span className="text-xs text-slate-400">
+                      {announcements.length} รายการ
+                    </span>
+                  </div>
+
+                  {loadingDetails ? (
+                    <div className="py-8 text-center text-slate-400 text-xs">
+                      <i className="fa-solid fa-circle-notch fa-spin text-emerald-600 text-xl block mb-2 mx-auto" />
+                      กำลังโหลดประกาศ...
+                    </div>
+                  ) : announcements.length === 0 ? (
+                    <div className="p-8 text-center space-y-2">
+                      <i className="fa-solid fa-bell-slash text-3xl text-slate-300 block mx-auto" />
+                      <p className="text-sm font-semibold text-slate-700">ไม่มีประกาศใหม่</p>
+                      <p className="text-xs text-slate-400">
+                        คุณครูยังไม่มีประกาศแจ้งเตือนในขณะนี้
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-100 space-y-3">
+                      {announcements.map((ann) => (
+                        <div key={ann.id} className="pt-3 first:pt-0 space-y-1.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <span
+                              className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                                ann.priority === "urgent"
+                                  ? "bg-rose-100 text-rose-700"
+                                  : "bg-slate-100 text-slate-600"
+                              }`}
+                            >
+                              {ann.priority === "urgent" ? "🚨 ประกาศด่วน" : "ข่าวประชาสัมพันธ์"}
+                            </span>
+                            <span className="text-[11px] text-slate-400">{ann.createdAt}</span>
+                          </div>
+                          <p className="font-bold text-slate-900 text-sm">{ann.title}</p>
+                          <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-line bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                            {ann.content}
+                          </p>
+                          <p className="text-[11px] text-slate-400 text-right">
+                            โดย: {ann.teacherName}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* TAB 6: CONTACT TEACHER */}
+            {activeTab === "contact" && (
+              <div className="space-y-4 animate-in fade-in">
+                <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-sm space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <i className="fa-solid fa-phone text-emerald-600" />
+                      ช่องทางติดต่อครูประจำชั้น / ครูประจำวิชา
+                    </h3>
+                  </div>
+
+                  <p className="text-xs text-slate-500">
+                    ผู้ปกครองสามารถกดโทรออก หรือกดเพิ่มเพื่อนใน LINE เพื่อติดต่อสอบถามคุณครูได้โดยตรง
+                  </p>
+
+                  {loadingDetails ? (
+                    <div className="py-8 text-center text-slate-400 text-xs">
+                      <i className="fa-solid fa-circle-notch fa-spin text-emerald-600 text-xl block mb-2 mx-auto" />
+                      กำลังดึงข้อมูลติดต่อคุณครู...
+                    </div>
+                  ) : teacherContacts.length === 0 ? (
+                    <div className="p-8 text-center space-y-2">
+                      <i className="fa-solid fa-user-xmark text-3xl text-slate-300 block mx-auto" />
+                      <p className="text-sm font-semibold text-slate-700">ไม่พบข้อมูลคุณครู</p>
+                      <p className="text-xs text-slate-400">
+                        ยังไม่มีข้อมูลห้องเรียนที่นักเรียนลงทะเบียน
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4 pt-1">
+                      {teacherContacts.map((t, idx) => (
+                        <div
+                          key={idx}
+                          className="bg-slate-50/80 rounded-2xl p-4 border border-slate-200/80 space-y-3"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center text-lg font-bold">
+                              <i className="fa-solid fa-chalkboard-user" />
+                            </div>
+                            <div>
+                              <p className="font-bold text-slate-900 text-base leading-snug">
+                                {t.teacherName}
+                              </p>
+                              <p className="text-xs text-slate-500">
+                                ครูผู้สอนวิชา: <strong className="text-slate-800">{t.subjectName || "ประจำชั้น"}</strong>
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                            {t.phoneNumber ? (
+                              <a
+                                href={`tel:${t.phoneNumber.replace(/[^0-9]/g, "")}`}
+                                className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm transition shadow-sm flex items-center justify-center gap-2"
+                              >
+                                <i className="fa-solid fa-phone" /> โทรหาครู ({t.phoneNumber})
+                              </a>
+                            ) : (
+                              <div className="w-full py-2.5 px-3 rounded-xl bg-slate-200/60 text-slate-500 text-xs text-center">
+                                รอครูระบุเบอร์โทร
+                              </div>
+                            )}
+
+                            {t.lineId ? (
+                              <a
+                                href={
+                                  t.lineId.startsWith("http")
+                                    ? t.lineId
+                                    : `https://line.me/R/ti/p/~${t.lineId.trim()}`
+                                }
+                                target="_blank"
+                                rel="noreferrer"
+                                className="w-full py-3 px-4 rounded-xl bg-[#06C755] hover:bg-[#05b34c] text-white font-bold text-sm transition shadow-sm flex items-center justify-center gap-2"
+                              >
+                                <i className="fa-brands fa-line text-lg" /> แอดไลน์ ({t.lineId})
+                              </a>
+                            ) : (
+                              <div className="w-full py-2.5 px-3 rounded-xl bg-slate-200/60 text-slate-500 text-xs text-center">
+                                รอครูระบุ LINE ID
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Change Student or Web View Action */}
             <div className="pt-2 space-y-2">

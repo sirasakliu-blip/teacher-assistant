@@ -1,9 +1,12 @@
+import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import { TeacherProfileModal } from "@/components/teacher-profile-modal";
 
 export function TeacherNav() {
   const { profile, logout } = useAuth();
   const [location] = useLocation();
+  const [showProfileModal, setShowProfileModal] = useState(false);
 
   const links = [
     { href: "/teacher", label: "ห้องเรียน", icon: "fa-chalkboard" },
@@ -42,7 +45,15 @@ export function TeacherNav() {
           })}
         </div>
       </div>
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => setShowProfileModal(true)}
+          className="px-3 py-1.5 rounded-lg border border-primary/20 bg-primary/5 hover:bg-primary/10 text-primary text-xs font-semibold flex items-center gap-1.5 transition"
+          title="แก้ไขข้อมูลติดต่อคุณครู (เบอร์โทรศัพท์ / LINE ID สำหรับผู้ปกครอง)"
+        >
+          <i className="fa-solid fa-address-card" />
+          <span className="hidden sm:inline">ข้อมูลติดต่อครู</span>
+        </button>
         <span className="hidden sm:flex items-center gap-2 text-sm font-medium text-muted-foreground">
           <i className="fa-solid fa-chalkboard-user text-primary" /> {profile?.displayName}
         </span>
@@ -53,6 +64,12 @@ export function TeacherNav() {
           <i className="fa-solid fa-right-from-bracket" /> ออกจากระบบ
         </button>
       </div>
+
+      <TeacherProfileModal
+        open={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+        onSuccess={() => window.location.reload()}
+      />
     </nav>
   );
 }
