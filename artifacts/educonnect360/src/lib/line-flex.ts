@@ -36,7 +36,7 @@ export interface StudentReportData {
  * All-in-One LINE Flex Message Card
  */
 export function buildStudentReportFlexMessage(data: StudentReportData) {
-  const { student, attendance, grades, gpa, webBaseUrl = "https://educonnect-lms.vercel.app" } = data;
+  const { student, attendance, grades, gpa, webBaseUrl = "https://teacher-assistant-lilac.vercel.app" } = data;
 
   // Determine Today's Status styling
   let statusBadge = {

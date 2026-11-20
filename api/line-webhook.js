@@ -5,7 +5,7 @@ const LINE_CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN || "";
 const LINE_CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET || "";
 const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || "educonnect360-d5c47";
 const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY || "AIzaSyCSvi6-C3Gar4Fkb9EsxjbR5DVJ44o41AI";
-const WEB_BASE_URL = process.env.WEB_BASE_URL || "https://educonnect-lms.vercel.app";
+const WEB_BASE_URL = process.env.WEB_BASE_URL || "https://teacher-assistant-lilac.vercel.app";
 const LINE_LIFF_ID = process.env.LINE_LIFF_ID || process.env.VITE_LINE_LIFF_ID || "2012726688-SBKhhJZJ";
 
 function getLiffUrl(tab = "", extraParams = {}) {
