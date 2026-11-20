@@ -1175,6 +1175,62 @@ export async function createTeacherInvite(options: {
   };
 }
 
+export async function createTeacherInvitesBatch(
+  count: number,
+  options: {
+    prefixNote?: string;
+    createdByUid?: string;
+    createdByName?: string;
+  }
+): Promise<TeacherInvite[]> {
+  const database = requireDb();
+  const validCount = Math.min(Math.max(1, count), 100);
+  const created: TeacherInvite[] = [];
+
+  for (let i = 1; i <= validCount; i++) {
+    let code = generateTeacherInviteCode();
+    let snap = await getDoc(doc(database, "teacher_invites", code));
+    let attempts = 0;
+    while (snap.exists() && attempts < 5) {
+      code = generateTeacherInviteCode();
+      snap = await getDoc(doc(database, "teacher_invites", code));
+      attempts++;
+    }
+
+    const note = options.prefixNote
+      ? (validCount > 1 ? `${options.prefixNote} #${i}` : options.prefixNote)
+      : "";
+
+    const ref = doc(database, "teacher_invites", code);
+    await setDoc(ref, {
+      code,
+      isUsed: false,
+      note,
+      createdByUid: options.createdByUid || null,
+      createdByName: options.createdByName || null,
+      createdAt: serverTimestamp(),
+      usedByUid: null,
+      usedByName: null,
+      usedAt: null,
+    });
+
+    created.push({
+      id: code,
+      code,
+      isUsed: false,
+      note,
+      createdByUid: options.createdByUid,
+      createdByName: options.createdByName,
+      createdAt: new Date().toISOString(),
+      usedByUid: null,
+      usedByName: null,
+      usedAt: null,
+    });
+  }
+
+  return created;
+}
+
 export async function deleteTeacherInvite(code: string): Promise<void> {
   const database = requireDb();
   const normalized = code.trim().toUpperCase();

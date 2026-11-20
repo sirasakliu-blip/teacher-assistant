@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { TeacherInvite, AdminWhitelist, User, ParentViewToken } from "@/types";
 import {
   createTeacherInvite,
+  createTeacherInvitesBatch,
   deleteTeacherInvite,
   subscribeTeacherInvites,
   getAllAdminWhitelist,
@@ -32,6 +33,7 @@ export default function AdminDashboard() {
   const [invites, setInvites] = useState<TeacherInvite[]>([]);
   const [loadingInvites, setLoadingInvites] = useState(true);
   const [note, setNote] = useState("");
+  const [inviteQuantity, setInviteQuantity] = useState(1);
   const [creatingInvite, setCreatingInvite] = useState(false);
   const [latestCode, setLatestCode] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
@@ -136,17 +138,32 @@ export default function AdminDashboard() {
     e.preventDefault();
     setCreatingInvite(true);
     try {
-      const newInvite = await createTeacherInvite({
-        note: note.trim() || undefined,
-        createdByUid: profile?.uid,
-        createdByName: profile?.displayName || profile?.fullName,
-      });
-      setLatestCode(newInvite.code);
-      setNote("");
-      toast({
-        title: "สร้างรหัสเชิญครูสำเร็จ",
-        description: `รหัส: ${newInvite.code} สามารถคัดลอกและส่งให้ครูได้ทันที`,
-      });
+      if (inviteQuantity > 1) {
+        const batch = await createTeacherInvitesBatch(inviteQuantity, {
+          prefixNote: note.trim() || undefined,
+          createdByUid: profile?.uid,
+          createdByName: profile?.displayName || profile?.fullName,
+        });
+        setLatestCode(batch[batch.length - 1]?.code || null);
+        setNote("");
+        setInviteQuantity(1);
+        toast({
+          title: `สร้างรหัสเชิญครูสำเร็จ ${batch.length} รหัส!`,
+          description: `สามารถกดปุ่ม "แม่แบบ Excel ครู (พร้อมรหัส)" เพื่อดาวน์โหลดไฟล์ Excel ส่งต่อให้คุณครูได้ทันที`,
+        });
+      } else {
+        const newInvite = await createTeacherInvite({
+          note: note.trim() || undefined,
+          createdByUid: profile?.uid,
+          createdByName: profile?.displayName || profile?.fullName,
+        });
+        setLatestCode(newInvite.code);
+        setNote("");
+        toast({
+          title: "สร้างรหัสเชิญครูสำเร็จ",
+          description: `รหัส: ${newInvite.code} สามารถคัดลอกและส่งให้ครูได้ทันที`,
+        });
+      }
     } catch (err) {
       toast({
         variant: "destructive",
@@ -268,21 +285,75 @@ export default function AdminDashboard() {
   }
 
   async function handleDownloadTeacherTemplate() {
-    const template = [
-      {
-        "ลำดับ": 1,
-        "ชื่อ-นามสกุล": "อาจารย์สมคิด จิตมั่นคง",
-        "กลุ่มสาระ": "วิทยาศาสตร์และเทคโนโลยี",
-        "เบอร์โทรศัพท์": "081-234-5678",
-      },
-      {
-        "ลำดับ": 2,
-        "ชื่อ-นามสกุล": "อาจารย์พรพิมล กลิ่นสุคนธ์",
-        "กลุ่มสาระ": "คณิตศาสตร์",
-        "เบอร์โทรศัพท์": "089-987-6543",
-      },
-    ];
-    await exportToExcel(template, "แม่แบบรายชื่อครู_EduConnect360", "รายชื่อครู");
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const availableInvites = invites.filter((i) => !i.isUsed);
+    const targetInvites = availableInvites.length > 0 ? availableInvites : invites;
+
+    if (targetInvites.length > 0) {
+      const rows = targetInvites.map((inv, idx) => ({
+        "ลำดับ": idx + 1,
+        "รหัสลงทะเบียนครู (Invite Code)": inv.code,
+        "สถานะรหัส": inv.isUsed ? "ใช้งานแล้ว" : "พร้อมใช้งาน",
+        "ชื่อ-นามสกุลครู": inv.usedByName || inv.note || "",
+        "กลุ่มสาระ / วิชาที่สอน": "",
+        "เบอร์โทรศัพท์": "",
+        "ลิงก์ลงทะเบียนสำหรับครู": `${origin}/register?code=${inv.code}`,
+        "วันที่สร้าง": inv.createdAt ? new Date(inv.createdAt).toLocaleDateString("th-TH") : new Date().toLocaleDateString("th-TH"),
+        "คำแนะนำสำหรับครู": `เข้าลิงก์ ${origin}/register แล้วกรอกรหัส ${inv.code} เพื่อสร้างบัญชีครู`,
+      }));
+
+      const exportName = `แม่แบบรายชื่อครู_พร้อมรหัสลงทะเบียน_${targetInvites.length}รหัส_${new Date().toISOString().slice(0, 10)}`;
+      await exportToExcel(rows, exportName, "รหัสลงทะเบียนครู");
+
+      toast({
+        title: "ดาวน์โหลดแม่แบบ Excel พร้อมรหัสสำเร็จ!",
+        description: `นำรหัสลงทะเบียนครู ${targetInvites.length} รหัส บรรจุลงในไฟล์ Excel เรียบร้อยแล้ว สามารถส่งต่อให้ครูได้ทันที`,
+      });
+      return;
+    }
+
+    // หากยังไม่มีรหัสในระบบเลย ระบบจะสร้างรหัสชุดเริ่มต้น 10 รหัสบรรจุลงใน Excel ให้อัตโนมัติ
+    setCreatingInvite(true);
+    try {
+      toast({
+        title: "กำลังเตรียมแม่แบบและสร้างรหัส...",
+        description: "ระบบกำลังสร้างรหัสลงทะเบียนครู 10 รหัสบรรจุลงในไฟล์ Excel",
+      });
+
+      const newInvites = await createTeacherInvitesBatch(10, {
+        prefixNote: "ครูท่านที่",
+        createdByUid: profile?.uid,
+        createdByName: profile?.displayName || profile?.fullName,
+      });
+
+      const rows = newInvites.map((inv, idx) => ({
+        "ลำดับ": idx + 1,
+        "รหัสลงทะเบียนครู (Invite Code)": inv.code,
+        "สถานะรหัส": "พร้อมใช้งาน",
+        "ชื่อ-นามสกุลครู": "",
+        "กลุ่มสาระ / วิชาที่สอน": "",
+        "เบอร์โทรศัพท์": "",
+        "ลิงก์ลงทะเบียนสำหรับครู": `${origin}/register?code=${inv.code}`,
+        "วันที่สร้าง": new Date().toLocaleDateString("th-TH"),
+        "คำแนะนำสำหรับครู": `เข้าลิงก์ ${origin}/register แล้วกรอกรหัส ${inv.code} เพื่อสร้างบัญชีครู`,
+      }));
+
+      const exportName = `แม่แบบรายชื่อครู_พร้อมรหัสลงทะเบียน_10รหัส_${new Date().toISOString().slice(0, 10)}`;
+      await exportToExcel(rows, exportName, "รหัสลงทะเบียนครู");
+
+      toast({
+        title: "ดาวน์โหลดแม่แบบ Excel สำเร็จ!",
+        description: "ระบบสร้างรหัสลงทะเบียนครู 10 รหัสพร้อมใช้งานและบรรจุลงในไฟล์เรียบร้อยแล้ว",
+      });
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "ดาวน์โหลดแม่แบบไม่สำเร็จ",
+        description: err instanceof Error ? err.message : "กรุณาลองใหม่อีกครั้ง",
+      });
+    } finally {
+      setCreatingInvite(false);
+    }
   }
 
   /* ---------------- Student Excel Batch Import & Class Setup Handlers ---------------- */
@@ -707,18 +778,30 @@ export default function AdminDashboard() {
                     รหัสจะอยู่ในรูปแบบ <code className="text-emerald-700 font-mono bg-emerald-50 px-1 py-0.5 rounded">TCH-XXXX-XX</code> ใช้งานได้เพียง 1 ครั้งต่อ 1 บัญชี
                   </p>
                 </div>
-                <form onSubmit={handleCreateInvite} className="flex flex-col sm:flex-row gap-2.5 w-full md:w-auto">
+                <form onSubmit={handleCreateInvite} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full md:w-auto">
+                  <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-xl">
+                    <span className="text-xs font-semibold text-slate-500 shrink-0">จำนวน:</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={inviteQuantity}
+                      onChange={(e) => setInviteQuantity(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
+                      className="w-14 px-1 py-0.5 text-sm text-center font-bold font-mono rounded bg-white border border-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                    <span className="text-xs text-slate-400">รหัส</span>
+                  </div>
                   <input
                     type="text"
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
-                    placeholder="บันทึกช่วยจำ (เช่น ครูสมชาย / กลุ่มสาระวิทย์)"
-                    className="px-3.5 py-2 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 min-w-[260px]"
+                    placeholder="บันทึกช่วยจำ (เช่น กลุ่มสาระวิทย์ หรือเว้นว่าง)"
+                    className="px-3.5 py-2 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 min-w-[220px]"
                   />
                   <button
                     type="submit"
                     disabled={creatingInvite}
-                    className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm transition shadow-sm shadow-emerald-600/20 disabled:opacity-50 flex items-center justify-center gap-2"
+                    className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm transition shadow-sm shadow-emerald-600/20 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
                   >
                     {creatingInvite ? (
                       <>
@@ -728,11 +811,29 @@ export default function AdminDashboard() {
                     ) : (
                       <>
                         <i className="fa-solid fa-key" />
-                        สร้างรหัสใหม่
+                        {inviteQuantity > 1 ? `สร้าง ${inviteQuantity} รหัส` : "สร้างรหัสใหม่"}
                       </>
                     )}
                   </button>
                 </form>
+              </div>
+
+              <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+                <span className="mr-1">เลือกจำนวนด่วน:</span>
+                {[1, 5, 10, 20, 50, 100].map((qty) => (
+                  <button
+                    key={qty}
+                    type="button"
+                    onClick={() => setInviteQuantity(qty)}
+                    className={`px-2.5 py-1 rounded-lg border font-mono transition cursor-pointer ${
+                      inviteQuantity === qty
+                        ? "bg-emerald-100 border-emerald-300 text-emerald-800 font-bold"
+                        : "bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-700"
+                    }`}
+                  >
+                    +{qty} รหัส
+                  </button>
+                ))}
               </div>
 
               {latestCode && (
@@ -775,9 +876,10 @@ export default function AdminDashboard() {
                   <button
                     type="button"
                     onClick={handleDownloadTeacherTemplate}
-                    className="px-3.5 py-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold flex items-center gap-1.5 transition"
+                    className="px-3.5 py-2 rounded-xl border border-teal-200 bg-teal-50 hover:bg-teal-100 text-teal-800 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                    title="ดาวน์โหลดแม่แบบ Excel พร้อมรหัสลงทะเบียนครูที่มีอยู่ เพื่อนำไปส่งให้ครูหลายๆ คนได้ทันที"
                   >
-                    <i className="fa-solid fa-download text-teal-600" /> แม่แบบ Excel ครู
+                    <i className="fa-solid fa-file-excel text-teal-600" /> แม่แบบ Excel ครู (พร้อมรหัส)
                   </button>
                   <button
                     type="button"
@@ -861,6 +963,15 @@ export default function AdminDashboard() {
                       ใช้แล้ว ({usedCount})
                     </button>
                   </div>
+                  <button
+                    type="button"
+                    onClick={handleDownloadTeacherTemplate}
+                    className="px-3 py-1.5 rounded-lg border border-teal-200 bg-teal-50 hover:bg-teal-100 text-teal-800 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                    title="ส่งออกรหัสลงทะเบียนครูทั้งหมดลงไฟล์ Excel"
+                  >
+                    <i className="fa-solid fa-file-excel text-teal-600" />
+                    <span>ส่งออก Excel ({invites.length})</span>
+                  </button>
                 </div>
               </div>
 
