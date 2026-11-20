@@ -24,6 +24,8 @@ export interface User {
   studentId?: string; // e.g. "67105"
   gradeLevel?: string; // e.g. "ม.3/1"
   schoolName?: string; // e.g. "โรงเรียนเตรียมอุดมศึกษา"
+  address?: string; // ที่ตั้งสถานศึกษา เช่น เลขที่ 99 ถ.พญาไท
+  moo?: string; // หมู่ที่ เช่น "หมู่ 1" หรือ "-"
   postalCode?: string; // e.g. "10330"
   province?: string; // e.g. "กรุงเทพมหานคร"
   district?: string; // e.g. "เขตปทุมวัน"
@@ -35,12 +37,36 @@ export interface User {
   updatedAt: string; // ISO timestamp
 }
 
+export interface SchoolLocationInfo {
+  schoolName?: string;
+  address?: string; // ที่ตั้ง / เลขที่ / ถนน
+  moo?: string; // หมู่ที่
+  postalCode?: string;
+  province?: string;
+  district?: string;
+  subDistrict?: string;
+}
+
 /** Teacher Invite Code record, stored in `teacher_invites` collection (doc id = code). */
 export interface TeacherInvite {
   id: string; // Code string, e.g. "TCH-8K4M-9X"
   code: string;
   isUsed: boolean;
   note?: string; // e.g. "ครูสมชาย ใจดี"
+  createdByUid?: string;
+  createdByName?: string;
+  createdAt: string; // ISO timestamp
+  usedByUid?: string | null;
+  usedByName?: string | null;
+  usedAt?: string | null; // ISO timestamp
+}
+
+/** Admin Security / Invite Code record, stored in `admin_invites` collection (doc id = code). Starts with ADM- */
+export interface AdminInvite {
+  id: string; // Code string, e.g. "ADM-8K4M-9X"
+  code: string;
+  isUsed: boolean;
+  note?: string; // e.g. "ผู้บริหาร / หัวหน้าฝ่ายไอที"
   createdByUid?: string;
   createdByName?: string;
   createdAt: string; // ISO timestamp

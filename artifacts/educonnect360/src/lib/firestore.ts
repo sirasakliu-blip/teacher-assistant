@@ -31,6 +31,7 @@ import {
 } from "firebase/auth";
 import { db, firebaseConfig } from "@/lib/firebase";
 import type {
+  AdminInvite,
   AdminWhitelist,
   Announcement,
   Assignment,
@@ -1169,6 +1170,133 @@ export async function deleteTeacherInvite(code: string): Promise<void> {
     throw new Error("ไม่สามารถลบรหัสที่ถูกใช้งานไปแล้วได้");
   }
   await deleteDoc(ref);
+}
+
+/**
+ * Generates an unpredictable 6-8 character admin security code.
+ * Format: `ADM-${4_chars}-${2_chars}` (e.g. ADM-8K4M-9X)
+ * Distinct prefix from teachers (TCH-) so they never get mixed up.
+ */
+export function generateAdminInviteCode(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let p1 = "";
+  let p2 = "";
+  for (let i = 0; i < 4; i++) {
+    p1 += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  for (let i = 0; i < 2; i++) {
+    p2 += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return `ADM-${p1}-${p2}`;
+}
+
+export async function createAdminInvite(options: {
+  note?: string;
+  createdByUid?: string;
+  createdByName?: string;
+}): Promise<AdminInvite> {
+  const database = requireDb();
+  let code = generateAdminInviteCode();
+
+  let snap = await getDoc(doc(database, "admin_invites", code));
+  let attempts = 0;
+  while (snap.exists() && attempts < 5) {
+    code = generateAdminInviteCode();
+    snap = await getDoc(doc(database, "admin_invites", code));
+    attempts++;
+  }
+
+  const ref = doc(database, "admin_invites", code);
+  await setDoc(ref, {
+    code,
+    isUsed: false,
+    note: options.note?.trim() || "",
+    createdByUid: options.createdByUid || null,
+    createdByName: options.createdByName || null,
+    createdAt: serverTimestamp(),
+    usedByUid: null,
+    usedByName: null,
+    usedAt: null,
+  });
+
+  return {
+    id: code,
+    code,
+    isUsed: false,
+    note: options.note?.trim() || "",
+    createdByUid: options.createdByUid,
+    createdByName: options.createdByName,
+    createdAt: new Date().toISOString(),
+    usedByUid: null,
+    usedByName: null,
+    usedAt: null,
+  };
+}
+
+export function subscribeAdminInvites(
+  callback: (invites: AdminInvite[]) => void,
+): Unsubscribe {
+  const database = requireDb();
+  return onSnapshot(collection(database, "admin_invites"), (snaps) => {
+    const list = snaps.docs
+      .map((snap) => {
+        const data = snap.data();
+        return {
+          id: snap.id,
+          code: data.code || snap.id,
+          isUsed: !!data.isUsed,
+          note: data.note || "",
+          createdByUid: data.createdByUid || "",
+          createdByName: data.createdByName || "",
+          createdAt: tsToISO(data.createdAt),
+          usedByUid: data.usedByUid || null,
+          usedByName: data.usedByName || null,
+          usedAt: data.usedAt ? tsToISO(data.usedAt) : null,
+        };
+      })
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    callback(list);
+  });
+}
+
+export async function deleteAdminInvite(code: string): Promise<void> {
+  const database = requireDb();
+  const normalized = code.trim().toUpperCase();
+  const ref = doc(database, "admin_invites", normalized);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) {
+    throw new Error("ไม่พบรหัสความปลอดภัยแอดมินนี้ในระบบ");
+  }
+  if (snap.data().isUsed) {
+    throw new Error("ไม่สามารถลบรหัสที่ถูกใช้งานไปแล้วได้");
+  }
+  await deleteDoc(ref);
+}
+
+export async function verifyAndConsumeAdminInvite(
+  code: string,
+  uid: string,
+  name: string,
+): Promise<boolean> {
+  const database = requireDb();
+  const clean = code.trim().toUpperCase();
+  if (!clean.startsWith("ADM-")) return false;
+
+  const ref = doc(database, "admin_invites", clean);
+  const snap = await getDoc(ref);
+  if (!snap.exists() || snap.data()?.isUsed === true) return false;
+
+  await setDoc(
+    ref,
+    {
+      isUsed: true,
+      usedByUid: uid,
+      usedByName: name,
+      usedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+  return true;
 }
 
 export async function updateUserRole(uid: string, role: UserRole): Promise<void> {

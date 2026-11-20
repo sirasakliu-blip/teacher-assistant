@@ -17,9 +17,11 @@ export default function Register() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
-  // 1. School & Location state (ย้ายโรงเรียนขึ้นบนสุด + ใส่จังหวัด อำเภอ ตำบล)
+  // 1. School & Location state (ย้ายโรงเรียนขึ้นบนสุด + ใส่จังหวัด อำเภอ ตำบล ที่ตั้ง หมู่)
   const [schoolName, setSchoolName] = useState("");
   const [affiliation, setAffiliation] = useState("สพฐ.");
+  const [address, setAddress] = useState("");
+  const [moo, setMoo] = useState("");
   const [postalCode, setPostalCode] = useState("");
   const [province, setProvince] = useState("");
   const [district, setDistrict] = useState("");
@@ -165,6 +167,8 @@ export default function Register() {
     try {
       const schoolInfo = {
         schoolName: schoolName.trim() || undefined,
+        address: address.trim() || undefined,
+        moo: moo.trim() || undefined,
         postalCode: postalCode.trim() || undefined,
         province: province.trim() || undefined,
         district: district.trim() || undefined,
@@ -270,7 +274,39 @@ export default function Register() {
                 </select>
               </div>
 
-              {/* 3. รหัสไปรษณีย์ & จังหวัด (แถวคู่ที่ 1 สมมาตร) */}
+              {/* 3. ที่ตั้งสถานศึกษา (เลขที่/ถนน) & หมู่ที่ */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 items-start">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-foreground mb-1.5">
+                    ที่ตั้งสถานศึกษา (เลขที่ / ซอย / ถนน)
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      placeholder="เช่น 99 ถ.พญาไท หรือ 123 ม.1"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm placeholder:text-muted-foreground/60 transition"
+                    />
+                    <i className="fa-solid fa-house-chimney absolute right-3.5 top-3.5 text-muted-foreground/60 text-xs pointer-events-none" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1.5">
+                    หมู่ที่
+                  </label>
+                  <input
+                    type="text"
+                    value={moo}
+                    onChange={(e) => setMoo(e.target.value)}
+                    placeholder="เช่น 1 หรือ - (หากไม่มี)"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm placeholder:text-muted-foreground/60 transition"
+                  />
+                </div>
+              </div>
+
+              {/* 4. รหัสไปรษณีย์ & จังหวัด (แถวคู่ที่ 1 สมมาตร) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-start">
                 <div>
                   <label className="block text-xs font-semibold text-foreground mb-1.5">
@@ -514,7 +550,7 @@ export default function Register() {
                   <i className="fa-solid fa-key absolute right-3.5 top-3 text-muted-foreground/60 text-xs" />
                 </div>
                 <p className="text-[11px] text-muted-foreground mt-1">
-                  ขอรับรหัสได้จากผู้ดูแลระบบสถานศึกษา (Admin)
+                  รหัสลงทะเบียนครูขึ้นต้นด้วย <span className="font-mono font-semibold text-primary">TCH-</span> ขอรับได้จากผู้ดูแลระบบสถานศึกษา (Admin)
                 </p>
               </div>
             </div>

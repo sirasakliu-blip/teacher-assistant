@@ -10,13 +10,15 @@ export default function AdminRegister() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
-  // School & Location state (แบ่งออกตามโรงเรียน ใช้เลขไปรษณีย์เพื่อตรวจพื้นที่)
+  // School & Location state (แบ่งออกตามโรงเรียน ใช้เลขไปรษณีย์เพื่อตรวจพื้นที่ พร้อมที่ตั้งและหมู่)
+  const [schoolName, setSchoolName] = useState("");
+  const [affiliation, setAffiliation] = useState("สพฐ.");
+  const [address, setAddress] = useState("");
+  const [moo, setMoo] = useState("");
   const [postalCode, setPostalCode] = useState("");
   const [province, setProvince] = useState("");
   const [district, setDistrict] = useState("");
   const [subDistrict, setSubDistrict] = useState("");
-  const [schoolName, setSchoolName] = useState("");
-  const [affiliation, setAffiliation] = useState("สพฐ.");
   const [detectedLocation, setDetectedLocation] = useState<string | null>(null);
 
   // Admin Account & Security Key state
@@ -156,6 +158,8 @@ export default function AdminRegister() {
         securityKey.trim(),
         {
           schoolName: schoolName.trim() || undefined,
+          address: address.trim() || undefined,
+          moo: moo.trim() || undefined,
           postalCode: postalCode.trim() || undefined,
           province: province.trim() || undefined,
           district: district.trim() || undefined,
@@ -261,7 +265,39 @@ export default function AdminRegister() {
                 </select>
               </div>
 
-              {/* 3. รหัสไปรษณีย์ & จังหวัด (แถวคู่ที่ 1 สมมาตร) */}
+              {/* 3. ที่ตั้งสถานศึกษา (เลขที่/ถนน) & หมู่ที่ */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 items-start">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-foreground mb-1.5">
+                    ที่ตั้งสถานศึกษา (เลขที่ / ซอย / ถนน)
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      placeholder="เช่น 99 ถ.พญาไท หรือ 123 ม.1"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm placeholder:text-muted-foreground/60 transition"
+                    />
+                    <i className="fa-solid fa-house-chimney absolute right-3.5 top-3.5 text-muted-foreground/60 text-xs pointer-events-none" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1.5">
+                    หมู่ที่
+                  </label>
+                  <input
+                    type="text"
+                    value={moo}
+                    onChange={(e) => setMoo(e.target.value)}
+                    placeholder="เช่น 1 หรือ - (หากไม่มี)"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm placeholder:text-muted-foreground/60 transition"
+                  />
+                </div>
+              </div>
+
+              {/* 4. รหัสไปรษณีย์ & จังหวัด (แถวคู่ที่ 1 สมมาตร) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-start">
                 <div>
                   <label className="block text-xs font-semibold text-foreground mb-1.5">
@@ -456,7 +492,7 @@ export default function AdminRegister() {
                 <i className="fa-solid fa-key absolute right-3.5 top-3 text-muted-foreground/60 text-xs" />
               </div>
               <p className="text-[11px] text-muted-foreground mt-1">
-                ใช้รหัสความปลอดภัยที่ได้รับมอบหมายเพื่อยืนยันสิทธิ์แอดมิน (สามารถใช้รหัสตั้งต้น <code className="font-mono text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded">ADMIN2026</code> ได้)
+                รหัสความปลอดภัยผู้ดูแลระบบขึ้นต้นด้วย <span className="font-mono font-semibold text-primary">ADM-</span> หรือรหัสตั้งต้น <code className="font-mono text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded">ADMIN2026</code> (แยกเฉพาะจากรหัสครูที่ขึ้นต้นด้วย TCH-)
               </p>
             </div>
 

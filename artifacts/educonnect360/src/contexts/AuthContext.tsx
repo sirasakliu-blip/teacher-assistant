@@ -25,7 +25,7 @@ import {
   generateParentViewToken,
   getUserProfile,
 } from "@/lib/firestore";
-import type { User, UserRole } from "@/types";
+import type { User, UserRole, SchoolLocationInfo } from "@/types";
 
 interface AuthContextValue {
   firebaseUser: FirebaseUser | null;
@@ -43,25 +43,13 @@ interface AuthContextValue {
     password: string,
     displayName: string,
     securityKey?: string,
-    schoolInfo?: {
-      schoolName?: string;
-      postalCode?: string;
-      province?: string;
-      district?: string;
-      subDistrict?: string;
-    },
+    schoolInfo?: SchoolLocationInfo,
   ) => Promise<void>;
   registerAdminWithGoogle: (
     user: FirebaseUser,
     displayName: string,
     securityKey: string,
-    schoolInfo?: {
-      schoolName?: string;
-      postalCode?: string;
-      province?: string;
-      district?: string;
-      subDistrict?: string;
-    },
+    schoolInfo?: SchoolLocationInfo,
     password?: string,
   ) => Promise<void>;
   resendVerificationEmail: () => Promise<void>;
@@ -74,25 +62,13 @@ interface AuthContextValue {
     password: string,
     displayName: string,
     inviteCode: string,
-    schoolInfo?: {
-      schoolName?: string;
-      postalCode?: string;
-      province?: string;
-      district?: string;
-      subDistrict?: string;
-    },
+    schoolInfo?: SchoolLocationInfo,
   ) => Promise<void>;
   registerTeacherWithGoogle: (
     user: FirebaseUser,
     displayName: string,
     inviteCode: string,
-    schoolInfo?: {
-      schoolName?: string;
-      postalCode?: string;
-      province?: string;
-      district?: string;
-      subDistrict?: string;
-    },
+    schoolInfo?: SchoolLocationInfo,
     password?: string,
   ) => Promise<void>;
   logout: () => Promise<void>;
@@ -273,17 +249,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     password: string,
     displayName: string,
     securityKey?: string,
-    schoolInfo?: {
-      schoolName?: string;
-      postalCode?: string;
-      province?: string;
-      district?: string;
-      subDistrict?: string;
-    },
+    schoolInfo?: SchoolLocationInfo,
   ) {
     if (!auth || !db) throw new Error("Firebase is not configured.");
     const cleanEmail = email.trim().toLowerCase();
     const cleanKey = (securityKey || "").trim().toUpperCase();
+
+    // Check prefix isolation: Teachers cannot register here with TCH-
+    if (cleanKey.startsWith("TCH-")) {
+      throw new Error("รหัสขึ้นต้นด้วย TCH- เป็นรหัสลงทะเบียนสำหรับครู ไม่สามารถใช้ลงทะเบียนผู้ดูแลระบบได้ กรุณาใช้รหัส ADM- หรือติดต่อผู้ดูแลระบบ");
+    }
 
     const MASTER_KEYS = ["ADMIN2026", "EDUCONNECT-ADMIN", "ADMIN-360", "ADM-0000", "0000", "ADMIN"];
     let authorized = MASTER_KEYS.includes(cleanKey);
@@ -294,10 +269,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     if (!authorized && cleanKey) {
-      const inviteRef = doc(db, "teacher_invites", cleanKey);
+      const inviteRef = doc(db, "admin_invites", cleanKey);
       const inviteSnap = await getDoc(inviteRef);
       if (inviteSnap.exists() && inviteSnap.data()?.isUsed !== true) {
         authorized = true;
+        await setDoc(inviteRef, { isUsed: true, usedByUid: "", usedByName: displayName, usedAt: serverTimestamp() }, { merge: true });
       }
     }
 
@@ -316,6 +292,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       fullName: displayName,
       role: "admin",
       schoolName: schoolInfo?.schoolName || "",
+      address: schoolInfo?.address || "",
+      moo: schoolInfo?.moo || "",
       postalCode: schoolInfo?.postalCode || "",
       province: schoolInfo?.province || "",
       district: schoolInfo?.district || "",
@@ -335,13 +313,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user: FirebaseUser,
     displayName: string,
     securityKey: string,
-    schoolInfo?: {
-      schoolName?: string;
-      postalCode?: string;
-      province?: string;
-      district?: string;
-      subDistrict?: string;
-    },
+    schoolInfo?: SchoolLocationInfo,
     password?: string,
   ) {
     if (!auth || !db) throw new Error("Firebase is not configured.");
@@ -349,7 +321,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const cleanKey = (securityKey || "").trim().toUpperCase();
     const cleanEmail = (user.email || "").trim().toLowerCase();
 
-    // Check valid master security keys, whitelisted email, or invite code
+    // Check prefix isolation: Teachers cannot register here with TCH-
+    if (cleanKey.startsWith("TCH-")) {
+      throw new Error("รหัสขึ้นต้นด้วย TCH- เป็นรหัสลงทะเบียนสำหรับครู ไม่สามารถใช้ลงทะเบียนผู้ดูแลระบบได้ กรุณาใช้รหัส ADM- หรือติดต่อผู้ดูแลระบบ");
+    }
+
+    // Check valid master security keys, whitelisted email, or admin invite code
     const MASTER_KEYS = ["ADMIN2026", "EDUCONNECT-ADMIN", "ADMIN-360", "ADM-0000", "0000", "ADMIN"];
     let authorized = MASTER_KEYS.includes(cleanKey);
 
@@ -359,7 +336,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     if (!authorized && cleanKey) {
-      const inviteRef = doc(db, "teacher_invites", cleanKey);
+      const inviteRef = doc(db, "admin_invites", cleanKey);
       const inviteSnap = await getDoc(inviteRef);
       if (inviteSnap.exists() && inviteSnap.data()?.isUsed !== true) {
         authorized = true;
@@ -389,6 +366,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       fullName: displayName,
       role: "admin",
       schoolName: schoolInfo?.schoolName || "",
+      address: schoolInfo?.address || "",
+      moo: schoolInfo?.moo || "",
       postalCode: schoolInfo?.postalCode || "",
       province: schoolInfo?.province || "",
       district: schoolInfo?.district || "",
@@ -472,13 +451,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     password: string,
     displayName: string,
     inviteCode: string,
-    schoolInfo?: {
-      schoolName?: string;
-      postalCode?: string;
-      province?: string;
-      district?: string;
-      subDistrict?: string;
-    },
+    schoolInfo?: SchoolLocationInfo,
   ) {
     if (!auth || !db) throw new Error("Firebase is not configured.");
 
@@ -488,6 +461,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!cleanEmail) throw new Error("กรุณากรอกอีเมล");
     if (!password || password.length < 6) throw new Error("รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร");
     if (!cleanCode) throw new Error("กรุณากรอกรหัสลงทะเบียนบุคลากร");
+
+    // Check prefix isolation: Admins cannot register here with ADM-
+    if (cleanCode.startsWith("ADM-")) {
+      throw new Error("รหัสขึ้นต้นด้วย ADM- เป็นรหัสความปลอดภัยสำหรับผู้ดูแลระบบ (Admin) ไม่สามารถใช้ลงทะเบียนครูได้ กรุณาใช้รหัส TCH- หรือลงทะเบียนที่หน้าระบบแอดมิน");
+    }
 
     const inviteRef = doc(db, "teacher_invites", cleanCode);
     const inviteSnap = await getDoc(inviteRef);
@@ -515,6 +493,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role: "teacher",
         inviteCodeUsed: cleanCode,
         schoolName: schoolInfo?.schoolName || "",
+        address: schoolInfo?.address || "",
+        moo: schoolInfo?.moo || "",
         postalCode: schoolInfo?.postalCode || "",
         province: schoolInfo?.province || "",
         district: schoolInfo?.district || "",
@@ -542,13 +522,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user: FirebaseUser,
     displayName: string,
     inviteCode: string,
-    schoolInfo?: {
-      schoolName?: string;
-      postalCode?: string;
-      province?: string;
-      district?: string;
-      subDistrict?: string;
-    },
+    schoolInfo?: SchoolLocationInfo,
     password?: string,
   ) {
     if (!auth || !db) throw new Error("Firebase is not configured.");
@@ -556,6 +530,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const cleanCode = (inviteCode || "").trim().toUpperCase();
     if (!cleanCode) {
       throw new Error("กรุณากรอกรหัสลงทะเบียนบุคลากร");
+    }
+
+    // Check prefix isolation: Admins cannot register here with ADM-
+    if (cleanCode.startsWith("ADM-")) {
+      throw new Error("รหัสขึ้นต้นด้วย ADM- เป็นรหัสความปลอดภัยสำหรับผู้ดูแลระบบ (Admin) ไม่สามารถใช้ลงทะเบียนครูได้ กรุณาใช้รหัส TCH- หรือลงทะเบียนที่หน้าระบบแอดมิน");
     }
 
     const inviteRef = doc(db, "teacher_invites", cleanCode);
@@ -590,6 +569,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role: "teacher",
         inviteCodeUsed: cleanCode,
         schoolName: schoolInfo?.schoolName || "",
+        address: schoolInfo?.address || "",
+        moo: schoolInfo?.moo || "",
         postalCode: schoolInfo?.postalCode || "",
         province: schoolInfo?.province || "",
         district: schoolInfo?.district || "",
