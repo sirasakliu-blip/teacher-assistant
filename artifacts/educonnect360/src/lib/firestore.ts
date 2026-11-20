@@ -482,6 +482,164 @@ export async function recordAttendance(input: {
   return { alreadyCheckedIn: false };
 }
 
+/** Updates or sets a student's attendance record (present / late / absent / excused) manually by teacher or kiosk */
+export async function updateOrSetStudentAttendance(input: {
+  classId: string;
+  sessionId: string;
+  studentId: string;
+  studentName: string;
+  date: string;
+  status: AttendanceStatus;
+}): Promise<void> {
+  const database = requireDb();
+  const existing = await getDocs(
+    query(
+      collection(database, "attendance"),
+      where("sessionId", "==", input.sessionId),
+      where("studentId", "==", input.studentId),
+    ),
+  );
+  if (!existing.empty) {
+    const docId = existing.docs[0].id;
+    await updateDoc(doc(database, "attendance", docId), {
+      status: input.status,
+      updatedAt: serverTimestamp(),
+    });
+  } else {
+    await addDoc(collection(database, "attendance"), {
+      classId: input.classId,
+      sessionId: input.sessionId,
+      studentId: input.studentId,
+      studentName: input.studentName,
+      date: input.date,
+      status: input.status,
+      checkedInAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  }
+  syncStudentSummary(input.studentId).catch((err) =>
+    console.error("Error syncing student summary:", err),
+  );
+}
+
+/** Batch marks all given students with a status (e.g. mark all present) */
+export async function batchSetAllAttendance(input: {
+  classId: string;
+  sessionId: string;
+  date: string;
+  students: Array<{ id: string; studentId: string; fullName: string }>;
+  status: AttendanceStatus;
+}): Promise<void> {
+  const database = requireDb();
+  const batch = writeBatch(database);
+
+  const existingSnap = await getDocs(
+    query(
+      collection(database, "attendance"),
+      where("sessionId", "==", input.sessionId),
+    ),
+  );
+  const existingMap = new Map<string, string>();
+  existingSnap.docs.forEach((d) => {
+    const data = d.data();
+    if (data.studentId) existingMap.set(data.studentId, d.id);
+  });
+
+  for (const s of input.students) {
+    const sid = s.studentId || s.id;
+    const existingDocId = existingMap.get(sid);
+    if (existingDocId) {
+      batch.update(doc(database, "attendance", existingDocId), {
+        status: input.status,
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      const newRef = doc(collection(database, "attendance"));
+      batch.set(newRef, {
+        classId: input.classId,
+        sessionId: input.sessionId,
+        studentId: sid,
+        studentName: s.fullName,
+        date: input.date,
+        status: input.status,
+        checkedInAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+  }
+
+  await batch.commit();
+
+  input.students.forEach((s) => {
+    syncStudentSummary(s.studentId || s.id).catch(() => {});
+  });
+}
+
+/** Queries all students belonging to a class (by gradeLevel and studentIds) */
+export async function getClassStudents(cls: Class): Promise<Array<{
+  id: string;
+  uid: string;
+  studentId: string;
+  fullName: string;
+  gradeLevel: string;
+}>> {
+  const database = requireDb();
+  const studentsMap = new Map<string, { id: string; uid: string; studentId: string; fullName: string; gradeLevel: string }>();
+
+  if (cls.gradeLevel) {
+    try {
+      const snapByGrade = await getDocs(
+        query(
+          collection(database, "users"),
+          where("role", "==", "student"),
+          where("gradeLevel", "==", cls.gradeLevel),
+        ),
+      );
+      snapByGrade.docs.forEach((d) => {
+        const data = d.data();
+        const sId = (data.studentId || d.id.replace(/^std_/, "")).toString();
+        studentsMap.set(sId, {
+          id: d.id,
+          uid: data.uid || d.id,
+          studentId: sId,
+          fullName: data.fullName || data.displayName || "นักเรียน",
+          gradeLevel: data.gradeLevel || cls.gradeLevel,
+        });
+      });
+    } catch (err) {
+      console.warn("Query students by grade error:", err);
+    }
+  }
+
+  if (cls.studentIds && cls.studentIds.length > 0) {
+    await Promise.all(
+      cls.studentIds.map(async (sid) => {
+        try {
+          const uSnap = await getDoc(doc(database, "users", sid));
+          if (uSnap.exists()) {
+            const data = uSnap.data();
+            const sId = (data.studentId || uSnap.id.replace(/^std_/, "")).toString();
+            if (!studentsMap.has(sId)) {
+              studentsMap.set(sId, {
+                id: uSnap.id,
+                uid: data.uid || uSnap.id,
+                studentId: sId,
+                fullName: data.fullName || data.displayName || "นักเรียน",
+                gradeLevel: data.gradeLevel || cls.gradeLevel,
+              });
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }),
+    );
+  }
+
+  const list = Array.from(studentsMap.values());
+  return list.sort((a, b) => a.studentId.localeCompare(b.studentId, undefined, { numeric: true }));
+}
+
 export async function hasStudentCheckedIn(
   sessionId: string,
   studentId: string,
