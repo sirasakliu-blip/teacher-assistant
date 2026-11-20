@@ -67,8 +67,8 @@ export function TeacherProfileModal({ open, onClose, onSuccess }: TeacherProfile
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-      <div className="glass-panel rounded-3xl p-6 sm:p-8 w-full max-w-md bg-card/95 border border-border shadow-2xl relative">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fade-in">
+      <div className="rounded-3xl p-6 sm:p-8 w-full max-w-md bg-card text-card-foreground border border-border shadow-2xl relative z-10">
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
@@ -102,7 +102,7 @@ export function TeacherProfileModal({ open, onClose, onSuccess }: TeacherProfile
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="เช่น คุณครูสมชาย ใจดี"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground"
             />
           </div>
 
@@ -116,7 +116,7 @@ export function TeacherProfileModal({ open, onClose, onSuccess }: TeacherProfile
               value={phoneNumber}
               onChange={(e) => setPhoneNumber(e.target.value)}
               placeholder="เช่น 081-234-5678"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground font-mono"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground font-mono"
             />
             <p className="text-[11px] text-muted-foreground mt-1">
               ผู้ปกครองสามารถกดปุ่มโทรออกจาก LINE ได้โดยตรง
@@ -133,7 +133,7 @@ export function TeacherProfileModal({ open, onClose, onSuccess }: TeacherProfile
               value={lineId}
               onChange={(e) => setLineId(e.target.value)}
               placeholder="เช่น kru_somchai หรือ เบอร์โทร"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground"
             />
             <p className="text-[11px] text-muted-foreground mt-1">
               ผู้ปกครองสามารถกดปุ่ม "เพิ่มเพื่อนใน LINE" เพื่อแชทสอบถามเรื่องบุตรหลานได้ทันที

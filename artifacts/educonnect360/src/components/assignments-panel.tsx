@@ -139,8 +139,8 @@ function CreateAssignmentModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm animate-fade-in-up">
-      <div className="glass-panel rounded-3xl p-8 w-full max-w-lg bg-card/95">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/75 backdrop-blur-md animate-fade-in-up">
+      <div className="rounded-3xl p-6 sm:p-8 w-full max-w-lg bg-card text-card-foreground border border-border shadow-2xl relative z-10">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-bold text-foreground">สั่งการบ้าน / สร้างแบบทดสอบ</h2>
           <button
