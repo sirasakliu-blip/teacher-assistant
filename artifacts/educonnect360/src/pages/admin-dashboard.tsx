@@ -84,11 +84,11 @@ export default function AdminDashboard() {
     return () => unsubscribe();
   }, []);
 
-  // Fetch Whitelist when switching to tab
+  // Fetch Whitelist and Users when switching to tab (cache to make tab switching instant)
   useEffect(() => {
-    if (activeTab === "whitelist") {
+    if (activeTab === "whitelist" && whitelist.length === 0) {
       loadWhitelist();
-    } else if (activeTab === "users") {
+    } else if (activeTab === "users" && users.length === 0) {
       loadUsersAndTokens();
     }
   }, [activeTab]);

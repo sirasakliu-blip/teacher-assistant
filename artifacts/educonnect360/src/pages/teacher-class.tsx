@@ -175,7 +175,7 @@ export default function TeacherClass() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-          <div className="lg:col-span-2 glass-panel rounded-3xl p-8 flex flex-col items-center text-center animate-fade-in-up" style={{ animationDelay: "240ms", animationFillMode: "both" }}>
+          <div className="lg:col-span-2 glass-panel rounded-3xl p-8 flex flex-col items-center text-center animate-fade-in-up">
             <h3 className="text-lg font-bold text-foreground mb-1">เซสชันเช็คชื่อวันนี้</h3>
             <p className="text-sm text-muted-foreground mb-6">
               {session ? "ให้นักเรียนสแกน QR Code นี้เพื่อเช็คชื่อ" : "ยังไม่ได้เปิดเซสชันสำหรับวันนี้"}
@@ -194,7 +194,7 @@ export default function TeacherClass() {
             <button
               onClick={handleStartSession}
               disabled={starting}
-              className="mt-6 w-full py-3.5 rounded-xl bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition-all shadow-lg shadow-primary/25 disabled:opacity-60 flex items-center justify-center gap-2"
+              className="mt-6 w-full py-3.5 rounded-xl bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition-all shadow-lg shadow-primary/25 disabled:opacity-60 flex items-center justify-center gap-2 cursor-pointer"
             >
               {starting ? (
                 <i className="fa-solid fa-circle-notch fa-spin" />
@@ -207,7 +207,7 @@ export default function TeacherClass() {
             </button>
           </div>
 
-          <div className="lg:col-span-3 glass-panel rounded-3xl p-8 animate-fade-in-up" style={{ animationDelay: "320ms", animationFillMode: "both" }}>
+          <div className="lg:col-span-3 glass-panel rounded-3xl p-8 animate-fade-in-up">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-bold text-foreground">รายชื่อผู้เช็คชื่อวันนี้</h3>
               <span className="text-sm font-semibold text-primary">{todayRate}% ของห้อง</span>
@@ -276,19 +276,15 @@ function StatCard({
   label,
   value,
   accent,
-  delay,
 }: {
   icon: string;
   label: string;
   value: string;
   accent: string;
-  delay: number;
+  delay?: number;
 }) {
   return (
-    <div
-      className="glass-panel rounded-2xl p-6 flex items-center gap-4 animate-fade-in-up"
-      style={{ animationDelay: `${delay}ms`, animationFillMode: "both" }}
-    >
+    <div className="glass-panel rounded-2xl p-6 flex items-center gap-4 animate-fade-in-up">
       <div className={`w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-xl ${accent}`}>
         <i className={`fa-solid ${icon}`} />
       </div>

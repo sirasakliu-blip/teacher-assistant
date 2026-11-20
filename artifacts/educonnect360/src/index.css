@@ -65,17 +65,17 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 
-  --animate-fade-in-up: fade-in-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
-  --animate-fade-in-down: fade-in-down 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-fade-in-up: fade-in-up 0.18s ease-out both;
+  --animate-fade-in-down: fade-in-down 0.18s ease-out both;
 }
 
 @keyframes fade-in-up {
-  0% { opacity: 0; transform: translateY(30px); }
+  0% { opacity: 0; transform: translateY(6px); }
   100% { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes fade-in-down {
-  0% { opacity: 0; transform: translateY(-30px); }
+  0% { opacity: 0; transform: translateY(-6px); }
   100% { opacity: 1; transform: translateY(0); }
 }
 
@@ -334,17 +334,21 @@
 }
 
 @layer utilities {
-  /* Glassmorphism surface helper for the green/white LMS theme. */
+  /* Glassmorphism surface helper for the green/white LMS theme - optimized for high-FPS rendering */
   .glass-panel {
-    background: color-mix(in srgb, hsl(var(--card)) 55%, transparent);
-    backdrop-filter: blur(16px) saturate(160%);
-    -webkit-backdrop-filter: blur(16px) saturate(160%);
-    border: 1px solid color-mix(in srgb, hsl(var(--primary)) 18%, transparent);
+    background: color-mix(in srgb, hsl(var(--card)) 85%, transparent);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid color-mix(in srgb, hsl(var(--primary)) 16%, transparent);
+    transform: translateZ(0);
   }
 
   .dark .glass-panel {
-    background: color-mix(in srgb, hsl(var(--card)) 45%, transparent);
-    border: 1px solid color-mix(in srgb, hsl(var(--primary)) 22%, transparent);
+    background: color-mix(in srgb, hsl(var(--card)) 75%, transparent);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid color-mix(in srgb, hsl(var(--primary)) 20%, transparent);
+    transform: translateZ(0);
   }
 }
 
