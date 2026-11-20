@@ -12,6 +12,7 @@ export default function Register() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<UserRole>("teacher");
+  const [inviteCode, setInviteCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -24,9 +25,18 @@ export default function Register() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    if (role === "teacher" && !inviteCode.trim()) {
+      toast({
+        variant: "destructive",
+        title: "กรุณากรอกรหัสลงทะเบียนบุคลากร",
+        description: "สำหรับบทบาทครู จำเป็นต้องระบุรหัสลงทะเบียนที่ได้รับจากผู้ดูแลระบบ",
+      });
+      return;
+    }
+
     setSubmitting(true);
     try {
-      await register(email, password, displayName, role);
+      await register(email, password, displayName, role, inviteCode.trim());
       toast({ title: "สร้างบัญชีสำเร็จ", description: "ยินดีต้อนรับสู่ EduConnect360" });
       if (role === "teacher") setLocation("/teacher");
       else if (role === "parent") setLocation("/parent");
@@ -134,6 +144,33 @@ export default function Register() {
                 className="w-full px-4 py-3 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-ring text-foreground placeholder:text-muted-foreground/70"
               />
             </div>
+
+            {/* Conditional Input for Teacher Invite Code */}
+            {role === "teacher" && (
+              <div className="animate-fade-in-down transition-all duration-300">
+                <label className="block text-sm font-semibold text-foreground mb-2 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <i className="fa-solid fa-key text-primary" />
+                    รหัสลงทะเบียนบุคลากร (Teacher Invite Code)
+                  </span>
+                  <span className="text-xs font-medium text-destructive">* จำเป็น</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required={role === "teacher"}
+                    value={inviteCode}
+                    onChange={(e) => setInviteCode(e.target.value.toUpperCase().replace(/\s+/g, ""))}
+                    placeholder="เช่น TCH-XXXX-XX (ขอรับได้จากผู้ดูแลระบบ)"
+                    className="w-full px-4 py-3 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground font-mono placeholder:text-muted-foreground/60 uppercase tracking-wider"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1.5">
+                  <i className="fa-solid fa-circle-info text-primary shrink-0" />
+                  สำหรับบุคลากรทางการศึกษาเท่านั้น รหัสนี้ใช้ได้เพียงครั้งเดียว
+                </p>
+              </div>
+            )}
             <button
               type="submit"
               disabled={submitting}

@@ -10,6 +10,7 @@ import TeacherClass from '@/pages/teacher-class';
 import TeacherGradebook from '@/pages/teacher-gradebook';
 import TeacherAiAssistant from '@/pages/teacher-ai-assistant';
 import TeacherLeaveRequests from '@/pages/teacher-leave-requests';
+import AdminDashboard from '@/pages/admin-dashboard';
 import StudentHome from '@/pages/student-home';
 import StudentClass from '@/pages/student-class';
 import ParentPortal from '@/pages/parent-portal';
@@ -50,6 +51,8 @@ function Router() {
           <TeacherLeaveRequests />
         </ProtectedRoute>
       </Route>
+      <Route path="/teacher/invites" component={AdminDashboard} />
+      <Route path="/admin" component={AdminDashboard} />
       <Route path="/student">
         <ProtectedRoute role="student">
           <StudentHome />

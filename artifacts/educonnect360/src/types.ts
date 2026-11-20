@@ -6,7 +6,7 @@
  */
 
 /** Role a user account can hold within the platform. */
-export type UserRole = "teacher" | "student" | "parent";
+export type UserRole = "teacher" | "student" | "parent" | "admin";
 
 /** A platform account, stored in the `users` Firestore collection (doc id = Firebase Auth uid). */
 export interface User {
@@ -16,9 +16,24 @@ export interface User {
   displayName: string;
   photoURL?: string | null;
   role: UserRole;
+  inviteCodeUsed?: string; // The teacher invite code used to register
   linkedStudentIds?: string[]; // Student UIDs linked to parent account
   createdAt: string; // ISO timestamp
   updatedAt: string; // ISO timestamp
+}
+
+/** Teacher Invite Code record, stored in `teacher_invites` collection (doc id = code). */
+export interface TeacherInvite {
+  id: string; // Code string, e.g. "TCH-8K4M-9X"
+  code: string;
+  isUsed: boolean;
+  note?: string; // e.g. "ครูสมชาย ใจดี"
+  createdByUid?: string;
+  createdByName?: string;
+  createdAt: string; // ISO timestamp
+  usedByUid?: string | null;
+  usedByName?: string | null;
+  usedAt?: string | null; // ISO timestamp
 }
 
 /** Preset accent covers for classes -- avoids requiring a real file upload for the MVP. */

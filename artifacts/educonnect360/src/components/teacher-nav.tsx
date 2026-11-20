@@ -8,6 +8,7 @@ export function TeacherNav() {
   const links = [
     { href: "/teacher", label: "ห้องเรียน", icon: "fa-chalkboard" },
     { href: "/teacher/leave-requests", label: "หนังสือใบลา", icon: "fa-file-signature" },
+    { href: "/teacher/invites", label: "รหัสเชิญครู", icon: "fa-key" },
     { href: "/teacher/ai-assistant", label: "ผู้ช่วยสอน AI", icon: "fa-wand-magic-sparkles" },
   ];
 

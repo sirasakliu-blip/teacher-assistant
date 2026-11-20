@@ -1,0 +1,92 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isUser(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && getUserData().role == 'admin';
+    }
+
+    function isTeacher() {
+      return isAuthenticated() && (getUserData().role == 'teacher' || isAdmin());
+    }
+
+    // =========================================================================
+    // 1. Teacher Invites (ระบบรหัสเชิญครู)
+    // =========================================================================
+    match /teacher_invites/{code} {
+      // 1.1 อนุญาตให้อ่านทีละรายการ (get) ได้ทุกคน (แม้ยังไม่ได้ล็อกอิน เพื่อตรวจสอบรหัสตอนหน้า Register)
+      allow get: if true;
+
+      // 1.2 ป้องกันไม่ให้บุคคลทั่วไปดึงรายการทั้งหมด (list) อนุญาตเฉพาะ Admin เท่านั้น
+      allow list: if isAdmin();
+
+      // 1.3 อนุญาตให้อัปเดตเฉพาะตอนเปลี่ยน isUsed จาก false เป็น true พร้อมผูก UID ตนเองตอนสมัครสำเร็จ
+      allow update: if isAuthenticated() &&
+        resource.data.isUsed == false &&
+        request.resource.data.isUsed == true &&
+        request.resource.data.usedByUid == request.auth.uid;
+
+      // 1.4 อนุญาตให้สร้าง (create) และลบ (delete) เฉพาะผู้ใช้ที่มีสิทธิ์ Admin เท่านั้น
+      allow create, delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // 2. Users Collection (ข้อมูลผู้ใช้งาน)
+    // =========================================================================
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isUser(userId);
+      allow update: if isUser(userId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // 3. Classes, Sessions, Attendance, Assignments, Submissions
+    // =========================================================================
+    match /classes/{classId} {
+      allow read: if isAuthenticated();
+      allow write: if isTeacher();
+    }
+
+    match /sessions/{sessionId} {
+      allow read: if isAuthenticated();
+      allow write: if isTeacher();
+    }
+
+    match /attendance/{attendanceId} {
+      allow read: if isAuthenticated();
+      allow write: if isTeacher();
+    }
+
+    match /assignments/{assignmentId} {
+      allow read: if isAuthenticated();
+      allow write: if isTeacher();
+    }
+
+    match /submissions/{submissionId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // =========================================================================
+    // 4. Leave Requests (ระบบหนังสือราชการและใบลา TH Sarabun PSK)
+    // =========================================================================
+    match /leave_requests/{requestId} {
+      allow read, create: if isAuthenticated();
+      allow update, delete: if isTeacher();
+    }
+  }
+}

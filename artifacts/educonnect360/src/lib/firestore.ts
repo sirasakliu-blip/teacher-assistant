@@ -12,7 +12,9 @@ import {
   getDoc,
   getDocs,
   onSnapshot,
+  orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   setDoc,
   Timestamp,
@@ -30,6 +32,7 @@ import type {
   LeaveRequest,
   StudentRiskEntry,
   Submission,
+  TeacherInvite,
   User,
   UserRole,
 } from "@/types";
@@ -61,10 +64,11 @@ export async function createUserProfile(
   email: string,
   displayName: string,
   role: UserRole,
+  inviteCodeUsed?: string,
 ): Promise<User> {
   const database = requireDb();
   const ref = doc(database, "users", uid);
-  await setDoc(ref, {
+  const dataToSave: Record<string, unknown> = {
     uid,
     email,
     displayName,
@@ -73,13 +77,18 @@ export async function createUserProfile(
     photoURL: null,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
-  });
+  };
+  if (inviteCodeUsed) {
+    dataToSave.inviteCodeUsed = inviteCodeUsed;
+  }
+  await setDoc(ref, dataToSave);
   return {
     id: uid,
     uid,
     email,
     displayName,
     role,
+    inviteCodeUsed,
     linkedStudentIds: [],
     photoURL: null,
     createdAt: new Date().toISOString(),
@@ -98,6 +107,7 @@ export async function getUserProfile(uid: string): Promise<User | null> {
     email: data.email,
     displayName: data.displayName,
     role: data.role,
+    inviteCodeUsed: data.inviteCodeUsed,
     linkedStudentIds: (data.linkedStudentIds as string[]) ?? [],
     photoURL: data.photoURL ?? null,
     createdAt: tsToISO(data.createdAt),
@@ -874,4 +884,160 @@ export async function updateLeaveRequestStatus(
 export async function deleteLeaveRequest(id: string): Promise<void> {
   const database = requireDb();
   await deleteDoc(doc(database, "leave_requests", id));
+}
+
+/* ------------------------------------------------------------------ */
+/* Teacher Invites & Admin Management                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Generates an unpredictable 6-8 character teacher invite code.
+ * Format: `TCH-${4_chars}-${2_chars}` (e.g. TCH-8K4M-9X)
+ * Omits ambiguous characters like 0, O, 1, I for ease of typing.
+ */
+export function generateTeacherInviteCode(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let p1 = "";
+  let p2 = "";
+  for (let i = 0; i < 4; i++) {
+    p1 += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  for (let i = 0; i < 2; i++) {
+    p2 += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return `TCH-${p1}-${p2}`;
+}
+
+export async function getTeacherInvite(code: string): Promise<TeacherInvite | null> {
+  const database = requireDb();
+  const normalized = code.trim().toUpperCase();
+  const snap = await getDoc(doc(database, "teacher_invites", normalized));
+  if (!snap.exists()) return null;
+  const data = snap.data();
+  return {
+    id: snap.id,
+    code: data.code || snap.id,
+    isUsed: !!data.isUsed,
+    note: data.note || "",
+    createdByUid: data.createdByUid || "",
+    createdByName: data.createdByName || "",
+    createdAt: tsToISO(data.createdAt),
+    usedByUid: data.usedByUid || null,
+    usedByName: data.usedByName || null,
+    usedAt: data.usedAt ? tsToISO(data.usedAt) : null,
+  };
+}
+
+export async function getAllTeacherInvites(): Promise<TeacherInvite[]> {
+  const database = requireDb();
+  const snaps = await getDocs(collection(database, "teacher_invites"));
+  return snaps.docs
+    .map((snap) => {
+      const data = snap.data();
+      return {
+        id: snap.id,
+        code: data.code || snap.id,
+        isUsed: !!data.isUsed,
+        note: data.note || "",
+        createdByUid: data.createdByUid || "",
+        createdByName: data.createdByName || "",
+        createdAt: tsToISO(data.createdAt),
+        usedByUid: data.usedByUid || null,
+        usedByName: data.usedByName || null,
+        usedAt: data.usedAt ? tsToISO(data.usedAt) : null,
+      };
+    })
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export function subscribeTeacherInvites(
+  callback: (invites: TeacherInvite[]) => void,
+): Unsubscribe {
+  const database = requireDb();
+  return onSnapshot(collection(database, "teacher_invites"), (snaps) => {
+    const list = snaps.docs
+      .map((snap) => {
+        const data = snap.data();
+        return {
+          id: snap.id,
+          code: data.code || snap.id,
+          isUsed: !!data.isUsed,
+          note: data.note || "",
+          createdByUid: data.createdByUid || "",
+          createdByName: data.createdByName || "",
+          createdAt: tsToISO(data.createdAt),
+          usedByUid: data.usedByUid || null,
+          usedByName: data.usedByName || null,
+          usedAt: data.usedAt ? tsToISO(data.usedAt) : null,
+        };
+      })
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    callback(list);
+  });
+}
+
+export async function createTeacherInvite(options: {
+  note?: string;
+  createdByUid?: string;
+  createdByName?: string;
+}): Promise<TeacherInvite> {
+  const database = requireDb();
+  let code = generateTeacherInviteCode();
+
+  // Check if by any rare chance code collision occurs
+  let snap = await getDoc(doc(database, "teacher_invites", code));
+  let attempts = 0;
+  while (snap.exists() && attempts < 5) {
+    code = generateTeacherInviteCode();
+    snap = await getDoc(doc(database, "teacher_invites", code));
+    attempts++;
+  }
+
+  const ref = doc(database, "teacher_invites", code);
+  await setDoc(ref, {
+    code,
+    isUsed: false,
+    note: options.note?.trim() || "",
+    createdByUid: options.createdByUid || null,
+    createdByName: options.createdByName || null,
+    createdAt: serverTimestamp(),
+    usedByUid: null,
+    usedByName: null,
+    usedAt: null,
+  });
+
+  return {
+    id: code,
+    code,
+    isUsed: false,
+    note: options.note?.trim() || "",
+    createdByUid: options.createdByUid,
+    createdByName: options.createdByName,
+    createdAt: new Date().toISOString(),
+    usedByUid: null,
+    usedByName: null,
+    usedAt: null,
+  };
+}
+
+export async function deleteTeacherInvite(code: string): Promise<void> {
+  const database = requireDb();
+  const normalized = code.trim().toUpperCase();
+  const ref = doc(database, "teacher_invites", normalized);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) {
+    throw new Error("ไม่พบรหัสลงทะเบียนนี้ในระบบ");
+  }
+  if (snap.data().isUsed) {
+    throw new Error("ไม่สามารถลบรหัสที่ถูกใช้งานไปแล้วได้");
+  }
+  await deleteDoc(ref);
+}
+
+export async function updateUserRole(uid: string, role: UserRole): Promise<void> {
+  const database = requireDb();
+  await updateDoc(doc(database, "users", uid), {
+    role,
+    updatedAt: serverTimestamp(),
+  });
 }
