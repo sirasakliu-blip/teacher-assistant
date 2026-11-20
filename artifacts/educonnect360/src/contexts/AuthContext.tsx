@@ -46,6 +46,18 @@ interface AuthContextValue {
   reloadUser: () => Promise<FirebaseUser | null>;
   login: (email: string, password: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
+  selectGoogleAccount: () => Promise<FirebaseUser>;
+  registerTeacherWithGoogle: (
+    user: FirebaseUser,
+    displayName: string,
+    inviteCode: string,
+    schoolInfo?: {
+      schoolName?: string;
+      postalCode?: string;
+      province?: string;
+      district?: string;
+    },
+  ) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -317,6 +329,78 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(userProfile);
   }
 
+  async function selectGoogleAccount(): Promise<FirebaseUser> {
+    if (!auth) throw new Error("Firebase Auth is not configured.");
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account" });
+    const credential = await signInWithPopup(auth, provider);
+    return credential.user;
+  }
+
+  async function registerTeacherWithGoogle(
+    user: FirebaseUser,
+    displayName: string,
+    inviteCode: string,
+    schoolInfo?: {
+      schoolName?: string;
+      postalCode?: string;
+      province?: string;
+      district?: string;
+    },
+  ) {
+    if (!auth || !db) throw new Error("Firebase is not configured.");
+
+    const cleanCode = (inviteCode || "").trim().toUpperCase();
+    if (!cleanCode) {
+      throw new Error("กรุณากรอกรหัสลงทะเบียนบุคลากร");
+    }
+
+    const inviteRef = doc(db, "teacher_invites", cleanCode);
+    const inviteSnap = await getDoc(inviteRef);
+    if (!inviteSnap.exists() || inviteSnap.data()?.isUsed === true) {
+      throw new Error("ไม่พบรหัสลงทะเบียนบุคลากร หรือรหัสนี้ถูกใช้งานไปแล้ว");
+    }
+
+    await updateProfile(user, { displayName });
+
+    // Atomically create user profile and consume invite code
+    await runTransaction(db, async (transaction) => {
+      const freshInviteSnap = await transaction.get(inviteRef);
+      if (!freshInviteSnap.exists() || freshInviteSnap.data()?.isUsed === true) {
+        throw new Error("ไม่พบรหัสลงทะเบียนบุคลากร หรือรหัสนี้ถูกใช้งานไปแล้ว");
+      }
+
+      const userRef = doc(db, "users", user.uid);
+      transaction.set(userRef, {
+        uid: user.uid,
+        email: user.email || "",
+        displayName,
+        fullName: displayName,
+        role: "teacher",
+        inviteCodeUsed: cleanCode,
+        schoolName: schoolInfo?.schoolName || "",
+        postalCode: schoolInfo?.postalCode || "",
+        province: schoolInfo?.province || "",
+        district: schoolInfo?.district || "",
+        linkedStudentIds: [],
+        photoURL: user.photoURL || null,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      transaction.update(inviteRef, {
+        isUsed: true,
+        usedByUid: user.uid,
+        usedByName: displayName,
+        usedAt: serverTimestamp(),
+      });
+    });
+
+    const userProfile = await getUserProfile(user.uid);
+    setFirebaseUser(user);
+    setProfile(userProfile);
+  }
+
   async function logout() {
     if (!auth) return;
     await signOut(auth);
@@ -336,6 +420,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         reloadUser,
         login,
         loginWithGoogle,
+        selectGoogleAccount,
+        registerTeacherWithGoogle,
         logout,
       }}
     >

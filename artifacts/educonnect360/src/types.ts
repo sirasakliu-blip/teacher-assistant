@@ -23,6 +23,10 @@ export interface User {
   role: UserRole;
   studentId?: string; // e.g. "67105"
   gradeLevel?: string; // e.g. "ม.3/1"
+  schoolName?: string; // e.g. "โรงเรียนเตรียมอุดมศึกษา"
+  postalCode?: string; // e.g. "10330"
+  province?: string; // e.g. "กรุงเทพมหานคร"
+  district?: string; // e.g. "เขตปทุมวัน"
   parentViewToken?: string; // Token for parent access
   inviteCodeUsed?: string; // The teacher invite code used to register
   linkedStudentIds?: string[]; // Student UIDs linked to parent account
