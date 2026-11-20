@@ -54,7 +54,7 @@ export default function TeacherHome() {
               </span>
             </div>
             <p className="text-muted-foreground text-sm">
-              ห้องเรียนและรายชื่อนักเรียนจัดสรรโดยฝ่ายวิชาการ/ทะเบียน (นำเข้าจากไฟล์ Excel)
+              ห้องเรียนและรายชื่อนักเรียน
             </p>
           </div>
           <div className="flex items-center gap-2.5">
