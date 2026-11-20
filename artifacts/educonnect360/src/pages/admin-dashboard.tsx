@@ -380,11 +380,11 @@ export default function AdminDashboard() {
   async function handleAddAdmin(e: React.FormEvent) {
     e.preventDefault();
     const cleanEmail = newAdminEmail.trim().toLowerCase();
-    if (!cleanEmail.endsWith(".ac.th")) {
+    if (!cleanEmail || !cleanEmail.includes("@")) {
       toast({
         variant: "destructive",
         title: "รูปแบบอีเมลไม่ถูกต้อง",
-        description: "อีเมลผู้ดูแลระบบต้องลงท้ายด้วย .ac.th เท่านั้น",
+        description: "กรุณาระบุอีเมลที่ถูกต้อง",
       });
       return;
     }
@@ -638,7 +638,7 @@ export default function AdminDashboard() {
             }`}
           >
             <i className="fa-solid fa-user-shield" />
-            <span>จัดการสิทธิ์แอดมิน (.ac.th)</span>
+            <span>จัดการสิทธิ์แอดมิน (Whitelist)</span>
             {whitelist.length > 0 && (
               <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-slate-100 text-slate-600">
                 {whitelist.length}
@@ -947,7 +947,7 @@ export default function AdminDashboard() {
                 เพิ่มอีเมลผู้ดูแลระบบ (Admin Whitelist)
               </h2>
               <p className="text-xs text-slate-500 mt-1">
-                ระบบจะตรวจสอบว่าอีเมลต้องลงท้ายด้วย <code className="text-emerald-700 font-mono bg-emerald-50 px-1 py-0.5 rounded">.ac.th</code> เท่านั้น เมื่อเพิ่มแล้วเจ้าของอีเมลจะสามารถสมัครบัญชีแอดมินผ่านลิงก์เฉพาะได้
+                เพิ่มอีเมลที่ได้รับอนุมัติสิทธิ์ผู้ดูแลระบบ (Admin Whitelist) โดยไม่จำกัดโดเมน เมื่อเพิ่มแล้วเจ้าของอีเมลจะสามารถลงทะเบียนแอดมินหรือเข้าสู่ระบบได้ทันที
               </p>
 
               <form onSubmit={handleAddAdmin} className="mt-4 flex flex-col sm:flex-row gap-3">
@@ -956,7 +956,7 @@ export default function AdminDashboard() {
                   required
                   value={newAdminEmail}
                   onChange={(e) => setNewAdminEmail(e.target.value)}
-                  placeholder="อีเมลทางการ เช่น admin@school.ac.th"
+                  placeholder="กรอกอีเมล เช่น admin@school.ac.th หรือ admin@gmail.com"
                   className="flex-1 px-3.5 py-2 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                 />
                 <input
