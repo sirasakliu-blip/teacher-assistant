@@ -399,6 +399,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!auth) throw new Error("Firebase Auth is not configured.");
     const credential = await signInWithEmailAndPassword(auth, email, password);
     const userProfile = await getUserProfile(credential.user.uid);
+    if (!userProfile) {
+      await signOut(auth);
+      setFirebaseUser(null);
+      setProfile(null);
+      throw new Error("ยังไม่พบบัญชีผู้ใช้งานในระบบ กรุณาลงทะเบียนก่อนเข้าสู่ระบบ (กด 'สมัครสมาชิก' ด้านล่าง)");
+    }
     setFirebaseUser(credential.user);
     setProfile(userProfile);
   }
@@ -410,28 +416,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const credential = await signInWithPopup(auth, provider);
     const user = credential.user;
 
-    // Check existing profile
-    let userProfile = await getUserProfile(user.uid);
+    // Strict Check: User MUST register first with invite code or admin key
+    const userProfile = await getUserProfile(user.uid);
     if (!userProfile) {
-      const cleanEmail = (user.email || "").trim().toLowerCase();
-      // Check if email is an approved admin in whitelist
-      const isApprovedAdmin = await checkAdminWhitelist(cleanEmail);
-      const role: UserRole = isApprovedAdmin ? "admin" : "teacher";
-
-      const newProfile: Partial<User> = {
-        uid: user.uid,
-        email: user.email || "",
-        displayName: user.displayName || user.email?.split("@")[0] || "คุณครู",
-        fullName: user.displayName || user.email?.split("@")[0] || "คุณครู",
-        role: role,
-        linkedStudentIds: [],
-        photoURL: user.photoURL || null,
-        createdAt: serverTimestamp() as any,
-        updatedAt: serverTimestamp() as any,
-      };
-
-      await setDoc(doc(db, "users", user.uid), newProfile);
-      userProfile = await getUserProfile(user.uid);
+      // Sign out immediately so Firebase Auth does not maintain a session for an unregistered user
+      await signOut(auth);
+      setFirebaseUser(null);
+      setProfile(null);
+      throw new Error("ยังไม่พบบัญชีผู้ใช้งานในระบบ กรุณาสมัครสมาชิก / ลงทะเบียนก่อนเข้าสู่ระบบ (กด 'สมัครสมาชิก' ด้านล่าง)");
     }
 
     setFirebaseUser(user);
