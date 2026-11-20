@@ -75,6 +75,8 @@ export default function Register() {
         errorMsg = "หน้าต่างเลือกบัญชีถูกปิดก่อนทำรายการสำเร็จ";
       } else if (err?.code === "auth/operation-not-allowed") {
         errorMsg = "ยังไม่ได้เปิดใช้งาน Google Provider ใน Firebase Console";
+      } else if (err?.code === "auth/unauthorized-domain") {
+        errorMsg = `โดเมน ${window.location.hostname} ยังไม่ได้รับอนุญาตใน Firebase ให้เพิ่มใน Authentication > Settings > Authorized domains`;
       } else if (err?.message) {
         errorMsg = err.message;
       }

@@ -29,6 +29,8 @@ export default function Login() {
         errorMsg = "หน้าต่างเข้าสู่ระบบถูกปิดก่อนทำรายการสำเร็จ";
       } else if (err?.code === "auth/operation-not-allowed") {
         errorMsg = "ยังไม่ได้เปิดใช้งาน Google Provider ใน Firebase Console (Authentication > Sign-in method > Google)";
+      } else if (err?.code === "auth/unauthorized-domain") {
+        errorMsg = `โดเมน ${window.location.hostname} ยังไม่ได้รับอนุญาตใน Firebase ให้เพิ่มใน Authentication > Settings > Authorized domains`;
       } else if (err?.message) {
         errorMsg = err.message;
       }
