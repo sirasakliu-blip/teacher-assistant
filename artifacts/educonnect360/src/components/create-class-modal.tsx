@@ -104,22 +104,40 @@ export function CreateClassModal({
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-foreground mb-1.5 flex items-center gap-1.5">
-              <i className="fa-solid fa-book text-primary" /> ชื่อวิชา / ชื่อห้องเรียน
+            <label className="block text-xs font-semibold text-foreground mb-1.5 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <i className="fa-solid fa-book text-primary" /> ชื่อวิชา / ชื่อห้องเรียน
+              </span>
+              <span className="text-[11px] text-muted-foreground font-normal">คลิกเลือกชื่อด้านล่างได้</span>
             </label>
             <input
               type="text"
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="เช่น คณิตศาสตร์พื้นฐาน หรือ ห้อง ม.2/1"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground"
+              placeholder="เช่น ห้องเรียนประจำชั้น ม.2/1 หรือ คณิตศาสตร์"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground mb-1.5"
             />
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {[`ห้องเรียนประจำชั้น ${gradeLevel || "ม.2/1"}`, "คณิตศาสตร์พื้นฐาน", "วิทยาศาสตร์", "ภาษาอังกฤษ", "ภาษาไทย", "สังคมศึกษา"].map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setName(s)}
+                  className="px-2.5 py-1 rounded-lg text-[11px] bg-muted hover:bg-muted/80 text-foreground transition cursor-pointer"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-foreground mb-1.5 flex items-center gap-1.5">
-              <i className="fa-solid fa-door-open text-primary" /> ระดับชั้น / ห้อง
+            <label className="block text-xs font-semibold text-foreground mb-1.5 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <i className="fa-solid fa-door-open text-primary" /> ระดับชั้น / ห้อง
+              </span>
+              <span className="text-[11px] text-muted-foreground font-normal">คลิกเลือกระดับชั้น</span>
             </label>
             <input
               type="text"
@@ -127,8 +145,22 @@ export function CreateClassModal({
               value={gradeLevel}
               onChange={(e) => setGradeLevel(e.target.value)}
               placeholder="เช่น ม.2/1 หรือ ม.1/3"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground mb-1.5"
             />
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {["ม.1/1", "ม.2/1", "ม.2/2", "ม.3/1", "ม.4/1", "ม.5/1", "ม.6/1"].map((g) => (
+                <button
+                  key={g}
+                  type="button"
+                  onClick={() => setGradeLevel(g)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] transition cursor-pointer ${
+                    gradeLevel === g ? "bg-primary text-primary-foreground font-semibold" : "bg-muted hover:bg-muted/80 text-foreground"
+                  }`}
+                >
+                  {g}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div>

@@ -11,6 +11,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  limit,
   onSnapshot,
   orderBy,
   query,
@@ -278,6 +279,21 @@ export async function createClass(input: {
     joinCode = generateJoinCode();
   }
 
+  // Auto-find any students registered with this gradeLevel (e.g. ม.2/1) so they are enrolled immediately
+  let autoStudentIds: string[] = [];
+  try {
+    const studentSnaps = await getDocs(
+      query(
+        collection(database, "users"),
+        where("role", "==", "student"),
+        where("gradeLevel", "==", input.gradeLevel),
+      ),
+    );
+    autoStudentIds = studentSnaps.docs.map((d) => d.id);
+  } catch (err) {
+    console.warn("Auto-enroll query error:", err);
+  }
+
   const ref = await addDoc(collection(database, "classes"), {
     name: input.name,
     gradeLevel: input.gradeLevel,
@@ -285,7 +301,7 @@ export async function createClass(input: {
     teacherId: input.teacherId,
     teacherName: input.teacherName,
     joinCode,
-    studentIds: [] as string[],
+    studentIds: autoStudentIds,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });

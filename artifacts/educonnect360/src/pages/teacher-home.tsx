@@ -192,26 +192,66 @@ export default function TeacherHome() {
             <i className="fa-solid fa-circle-notch fa-spin text-primary" /> กำลังโหลด...
           </div>
         ) : classes.length === 0 ? (
-          <div className="glass-panel rounded-3xl p-16 text-center animate-fade-in-up">
-            <div className="w-16 h-16 rounded-3xl bg-primary/10 text-primary flex items-center justify-center text-3xl mx-auto mb-4">
+          <div className="glass-panel rounded-3xl p-12 sm:p-16 text-center animate-fade-in-up border border-border/80">
+            <div className="w-20 h-20 rounded-3xl bg-primary/10 text-primary flex items-center justify-center text-4xl mx-auto mb-4 shadow-inner">
               <i className="fa-solid fa-chalkboard" />
             </div>
-            <h3 className="text-xl font-bold text-foreground mb-2">ยังไม่มีห้องเรียนในระบบ</h3>
-            <p className="text-muted-foreground text-sm max-w-md mx-auto mb-6">
-              คุณสามารถกดปุ่มสร้างห้องเรียนใหม่ หรือรอระบบจัดสรรห้องเรียนอัตโนมัติจากไฟล์ Excel
+            <h3 className="text-2xl font-bold text-foreground mb-2">ยังไม่มีห้องเรียนในระบบ</h3>
+            <p className="text-muted-foreground text-sm max-w-md mx-auto mb-6 leading-relaxed">
+              คุณครูสามารถกดปุ่มสร้างห้องเรียนใหม่ได้ทันที หรือสร้างห้องเรียนประจำชั้นที่ปรึกษา ({advisorRoom}) อัตโนมัติด้วย 1 คลิก
             </p>
-            <div className="flex items-center justify-center gap-3">
+            <div className="flex items-center justify-center gap-3 flex-wrap">
               <button
                 onClick={() => setShowCreateClass(true)}
-                className="px-5 py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-xs hover:bg-primary/90 transition-all cursor-pointer inline-flex items-center gap-2 shadow-sm"
+                className="px-6 py-3.5 rounded-2xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-all cursor-pointer inline-flex items-center gap-2.5 shadow-lg shadow-primary/25 hover:-translate-y-0.5 active:translate-y-0"
               >
-                <i className="fa-solid fa-plus" /> สร้างห้องเรียนใหม่
+                <i className="fa-solid fa-plus text-base" />
+                <span>สร้างห้องเรียนใหม่</span>
               </button>
+
+              {advisorRoom && (
+                <button
+                  onClick={async () => {
+                    const teacherId = profile?.id || profile?.uid;
+                    const teacherName = profile?.displayName || profile?.fullName || "คุณครู";
+                    if (!teacherId) return;
+                    setLoading(true);
+                    try {
+                      await createClass({
+                        name: `ห้องเรียนประจำชั้น ${advisorRoom}`,
+                        gradeLevel: advisorRoom,
+                        cover: "emerald",
+                        teacherId,
+                        teacherName,
+                      });
+                      toast({
+                        title: "สร้างห้องเรียนสำเร็จ",
+                        description: `สร้างห้องเรียนประจำชั้น ${advisorRoom} เรียบร้อยแล้ว`,
+                      });
+                      await refresh();
+                    } catch (err) {
+                      toast({
+                        variant: "destructive",
+                        title: "สร้างห้องเรียนไม่สำเร็จ",
+                        description: err instanceof Error ? err.message : undefined,
+                      });
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  className="px-6 py-3.5 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-sm transition-all cursor-pointer inline-flex items-center gap-2.5 shadow-lg shadow-teal-600/25 hover:-translate-y-0.5 active:translate-y-0"
+                >
+                  <i className="fa-solid fa-wand-magic-sparkles text-base" />
+                  <span>สร้างห้องเรียน {advisorRoom} ทันที (1-Click)</span>
+                </button>
+              )}
+
               <button
                 onClick={refresh}
-                className="px-4 py-2.5 rounded-xl border border-border bg-card text-foreground font-semibold text-xs hover:bg-muted transition-all cursor-pointer inline-flex items-center gap-2"
+                className="px-4 py-3.5 rounded-2xl border border-border bg-card text-foreground font-semibold text-sm hover:bg-muted transition-all cursor-pointer inline-flex items-center gap-2"
               >
-                <i className="fa-solid fa-arrows-rotate" /> ตรวจสอบห้องเรียน
+                <i className="fa-solid fa-arrows-rotate text-primary" />
+                <span>ตรวจสอบห้องเรียนอีกครั้ง</span>
               </button>
             </div>
           </div>
