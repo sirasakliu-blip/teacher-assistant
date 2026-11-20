@@ -124,11 +124,10 @@ export default function AdminRegister() {
                 <span>ข้อมูลสถานศึกษาและพื้นที่ตั้ง (ตรวจตามรหัสไปรษณีย์)</span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-start">
                 <div>
-                  <label className="block text-xs font-semibold text-foreground mb-1.5 flex items-center justify-between">
-                    <span>รหัสไปรษณีย์สถานศึกษา</span>
-                    <span className="text-[10px] text-primary font-normal">ตรวจพื้นที่อัตโนมัติ</span>
+                  <label className="block text-xs font-semibold text-foreground mb-1.5">
+                    รหัสไปรษณีย์สถานศึกษา
                   </label>
                   <div className="relative">
                     <input
@@ -137,9 +136,9 @@ export default function AdminRegister() {
                       value={postalCode}
                       onChange={(e) => handlePostalCodeChange(e.target.value)}
                       placeholder="เช่น 10330 หรือ 50000"
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground font-mono text-sm placeholder:font-sans placeholder:text-muted-foreground/60"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground font-mono text-sm placeholder:font-sans placeholder:text-muted-foreground/60 transition"
                     />
-                    <i className="fa-solid fa-map-pin absolute right-3 top-3 text-muted-foreground/60 text-xs" />
+                    <i className="fa-solid fa-map-pin absolute right-3.5 top-3.5 text-muted-foreground/60 text-xs pointer-events-none" />
                   </div>
                 </div>
 
@@ -147,22 +146,30 @@ export default function AdminRegister() {
                   <label className="block text-xs font-semibold text-foreground mb-1.5">
                     จังหวัด / พื้นที่
                   </label>
-                  <input
-                    type="text"
-                    value={province}
-                    onChange={(e) => setProvince(e.target.value)}
-                    placeholder="ตรวจพบอัตโนมัติ"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm placeholder:text-muted-foreground/60"
-                  />
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={province}
+                      onChange={(e) => setProvince(e.target.value)}
+                      placeholder="ตรวจพบอัตโนมัติ"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm placeholder:text-muted-foreground/60 transition"
+                    />
+                    <i className="fa-solid fa-location-dot absolute right-3.5 top-3.5 text-muted-foreground/60 text-xs pointer-events-none" />
+                  </div>
                 </div>
               </div>
 
-              {detectedLocation && (
-                <div className="px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 text-xs flex items-center gap-2">
-                  <i className="fa-solid fa-location-dot text-emerald-600 shrink-0" />
+              {detectedLocation ? (
+                <div className="px-3.5 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 text-xs flex items-center gap-2 animate-in fade-in">
+                  <i className="fa-solid fa-circle-check text-emerald-600 shrink-0 text-xs" />
                   <span>
                     พื้นที่ที่ตรวจพบ: <strong>{detectedLocation}</strong>
                   </span>
+                </div>
+              ) : (
+                <div className="px-3 py-1.5 rounded-xl bg-muted/60 text-muted-foreground text-[11px] flex items-center gap-1.5">
+                  <i className="fa-solid fa-wand-magic-sparkles text-primary text-[10px]" />
+                  <span>ระบบจะตรวจหาจังหวัดและอำเภอให้อัตโนมัติเมื่อพิมพ์รหัสไปรษณีย์</span>
                 </div>
               )}
 
