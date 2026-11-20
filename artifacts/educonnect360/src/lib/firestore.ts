@@ -1603,25 +1603,121 @@ export async function getStudentSummary(studentUid: string): Promise<StudentSumm
  * - Student ID (when numeric, e.g. "67105")
  * - First Name without prefix (e.g. "สมชาย" finds "เด็กชายสมชาย ใจดี")
  */
+/**
+ * Helper with safe timeout for Firestore network calls
+ */
+function withTimeout<T>(promise: Promise<T>, ms = 6000): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error("การค้นหาใช้เวลานานเกินไป กรุณาลองใหม่อีกครั้ง")), ms),
+    ),
+  ]);
+}
+
+/**
+ * Smart Search for student records across both `users` and `student_summaries` collections by:
+ * - Student ID (when numeric, e.g. "67105")
+ * - First Name without prefix (e.g. "สมชาย" finds "เด็กชายสมชาย ใจดี")
+ */
 export async function searchStudentsByQuery(searchTerm: string): Promise<User[]> {
   const database = requireDb();
   const raw = searchTerm.trim();
   if (!raw) return [];
 
   const isNumeric = /^\d+$/.test(raw);
+  const normalized = normalizeThaiName(raw);
+  const targetSearch = (normalized.searchName || normalized.firstName || raw).toLowerCase();
 
-  // 1. If numeric, search directly by studentId
-  if (isNumeric) {
-    const q = query(
-      collection(database, "users"),
-      where("role", "==", "student"),
-      where("studentId", "==", raw),
-    );
-    const snap = await getDocs(q);
-    if (!snap.empty) {
-      return snap.docs.map((d) => {
+  const resultsMap = new Map<string, User>();
+
+  // Helper to add user to results
+  function addFoundUser(u: User) {
+    const key = u.studentId || u.id;
+    if (!resultsMap.has(key)) {
+      resultsMap.set(key, u);
+    }
+  }
+
+  try {
+    // 1. If numeric, search directly by studentId in users
+    if (isNumeric) {
+      try {
+        const qUser = query(
+          collection(database, "users"),
+          where("role", "==", "student"),
+          where("studentId", "==", raw),
+        );
+        const snap = await withTimeout(getDocs(qUser), 4000);
+        snap.docs.forEach((d) => {
+          const data = d.data();
+          addFoundUser({
+            id: d.id,
+            uid: data.uid || d.id,
+            email: data.email || "",
+            displayName: data.displayName || "",
+            fullName: data.fullName || data.displayName || "",
+            searchName: data.searchName,
+            normalizedFullName: data.normalizedFullName,
+            photoURL: data.photoURL ?? null,
+            role: data.role,
+            studentId: data.studentId,
+            gradeLevel: data.gradeLevel || "มัธยมศึกษา",
+            parentViewToken: data.parentViewToken,
+            inviteCodeUsed: data.inviteCodeUsed,
+            linkedStudentIds: (data.linkedStudentIds as string[]) ?? [],
+            createdAt: tsToISO(data.createdAt),
+            updatedAt: tsToISO(data.updatedAt),
+          });
+        });
+      } catch (err) {
+        console.warn("User studentId query fallback:", err);
+      }
+
+      // Also check student_summaries for numeric studentId
+      try {
+        const qSummary = query(
+          collection(database, "student_summaries"),
+          where("studentId", "==", raw),
+        );
+        const snapSummary = await withTimeout(getDocs(qSummary), 4000);
+        snapSummary.docs.forEach((d) => {
+          const data = d.data();
+          addFoundUser({
+            id: d.id,
+            uid: data.studentUid || d.id,
+            email: "",
+            displayName: data.fullName || "นักเรียน",
+            fullName: data.fullName || "นักเรียน",
+            role: "student",
+            studentId: data.studentId,
+            gradeLevel: "มัธยมศึกษา",
+            linkedStudentIds: [],
+            photoURL: null,
+            createdAt: tsToISO(data.updatedAt),
+            updatedAt: tsToISO(data.updatedAt),
+          });
+        });
+      } catch (err) {
+        console.warn("Summary studentId query fallback:", err);
+      }
+
+      if (resultsMap.size > 0) {
+        return Array.from(resultsMap.values());
+      }
+    }
+
+    // 2. Text Search by searchName in users
+    try {
+      const qSearchName = query(
+        collection(database, "users"),
+        where("role", "==", "student"),
+        where("searchName", "==", targetSearch),
+      );
+      const snapSearchName = await withTimeout(getDocs(qSearchName), 4000);
+      snapSearchName.docs.forEach((d) => {
         const data = d.data();
-        return {
+        addFoundUser({
           id: d.id,
           uid: data.uid || d.id,
           email: data.email || "",
@@ -1632,88 +1728,106 @@ export async function searchStudentsByQuery(searchTerm: string): Promise<User[]>
           photoURL: data.photoURL ?? null,
           role: data.role,
           studentId: data.studentId,
+          gradeLevel: data.gradeLevel || "มัธยมศึกษา",
           parentViewToken: data.parentViewToken,
           inviteCodeUsed: data.inviteCodeUsed,
           linkedStudentIds: (data.linkedStudentIds as string[]) ?? [],
           createdAt: tsToISO(data.createdAt),
           updatedAt: tsToISO(data.updatedAt),
-        };
+        });
       });
+    } catch (err) {
+      console.warn("Exact searchName query error:", err);
     }
+
+    // 3. Fallback: Search all students in users collection (partial matching)
+    try {
+      const allStudentsSnap = await withTimeout(
+        getDocs(query(collection(database, "users"), where("role", "==", "student"))),
+        4000,
+      );
+      allStudentsSnap.docs.forEach((d) => {
+        const data = d.data();
+        const fullName = (data.fullName || data.displayName || "").toLowerCase();
+        const sName = (data.searchName || "").toLowerCase();
+        const sId = (data.studentId || "").toLowerCase();
+
+        const matches =
+          sId === raw.toLowerCase() ||
+          sName === targetSearch ||
+          fullName.includes(targetSearch) ||
+          fullName.includes(normalized.normalizedFullName.toLowerCase()) ||
+          normalizeThaiName(fullName).searchName.includes(targetSearch);
+
+        if (matches) {
+          addFoundUser({
+            id: d.id,
+            uid: data.uid || d.id,
+            email: data.email || "",
+            displayName: data.displayName || "",
+            fullName: data.fullName || data.displayName || "",
+            searchName: data.searchName,
+            normalizedFullName: data.normalizedFullName,
+            photoURL: data.photoURL ?? null,
+            role: data.role,
+            studentId: data.studentId,
+            gradeLevel: data.gradeLevel || "มัธยมศึกษา",
+            parentViewToken: data.parentViewToken,
+            inviteCodeUsed: data.inviteCodeUsed,
+            linkedStudentIds: (data.linkedStudentIds as string[]) ?? [],
+            createdAt: tsToISO(data.createdAt),
+            updatedAt: tsToISO(data.updatedAt),
+          });
+        }
+      });
+    } catch (err) {
+      console.warn("All students fallback error:", err);
+    }
+
+    // 4. Also check all documents in student_summaries collection (public read fallback)
+    if (resultsMap.size === 0) {
+      try {
+        const summariesSnap = await withTimeout(
+          getDocs(collection(database, "student_summaries")),
+          4000,
+        );
+        summariesSnap.docs.forEach((d) => {
+          const data = d.data();
+          const fullName = (data.fullName || "").toLowerCase();
+          const sId = (data.studentId || "").toLowerCase();
+
+          const matches =
+            sId === raw.toLowerCase() ||
+            fullName.includes(targetSearch) ||
+            fullName.includes(normalized.normalizedFullName.toLowerCase()) ||
+            normalizeThaiName(fullName).searchName.includes(targetSearch);
+
+          if (matches) {
+            addFoundUser({
+              id: d.id,
+              uid: data.studentUid || d.id,
+              email: "",
+              displayName: data.fullName || "นักเรียน",
+              fullName: data.fullName || "นักเรียน",
+              role: "student",
+              studentId: data.studentId,
+              gradeLevel: "มัธยมศึกษา",
+              linkedStudentIds: [],
+              photoURL: null,
+              createdAt: tsToISO(data.updatedAt),
+              updatedAt: tsToISO(data.updatedAt),
+            });
+          }
+        });
+      } catch (err) {
+        console.warn("Student summaries scan error:", err);
+      }
+    }
+  } catch (outerErr) {
+    console.error("Fatal error in searchStudentsByQuery:", outerErr);
   }
 
-  // 2. Text Search: Normalize Thai query
-  const normalized = normalizeThaiName(raw);
-  const targetSearch = (normalized.searchName || normalized.firstName || raw).toLowerCase();
-
-  // Try exact searchName match
-  const qSearchName = query(
-    collection(database, "users"),
-    where("role", "==", "student"),
-    where("searchName", "==", targetSearch),
-  );
-  const snapSearchName = await getDocs(qSearchName);
-  if (!snapSearchName.empty) {
-    return snapSearchName.docs.map((d) => {
-      const data = d.data();
-      return {
-        id: d.id,
-        uid: data.uid || d.id,
-        email: data.email || "",
-        displayName: data.displayName || "",
-        fullName: data.fullName || data.displayName || "",
-        searchName: data.searchName,
-        normalizedFullName: data.normalizedFullName,
-        photoURL: data.photoURL ?? null,
-        role: data.role,
-        studentId: data.studentId,
-        parentViewToken: data.parentViewToken,
-        inviteCodeUsed: data.inviteCodeUsed,
-        linkedStudentIds: (data.linkedStudentIds as string[]) ?? [],
-        createdAt: tsToISO(data.createdAt),
-        updatedAt: tsToISO(data.updatedAt),
-      };
-    });
-  }
-
-  // 3. Fallback: Search across all student users (partial match)
-  const allStudentsSnap = await getDocs(
-    query(collection(database, "users"), where("role", "==", "student")),
-  );
-  const allStudents = allStudentsSnap.docs.map((d) => {
-    const data = d.data();
-    return {
-      id: d.id,
-      uid: data.uid || d.id,
-      email: data.email || "",
-      displayName: data.displayName || "",
-      fullName: data.fullName || data.displayName || "",
-      searchName: data.searchName,
-      normalizedFullName: data.normalizedFullName,
-      photoURL: data.photoURL ?? null,
-      role: data.role,
-      studentId: data.studentId,
-      parentViewToken: data.parentViewToken,
-      inviteCodeUsed: data.inviteCodeUsed,
-      linkedStudentIds: (data.linkedStudentIds as string[]) ?? [],
-      createdAt: tsToISO(data.createdAt),
-      updatedAt: tsToISO(data.updatedAt),
-    };
-  });
-
-  return allStudents.filter((std) => {
-    const fullName = (std.fullName || std.displayName || "").toLowerCase();
-    const searchName = (std.searchName || "").toLowerCase();
-    const sId = (std.studentId || "").toLowerCase();
-
-    return (
-      sId === raw ||
-      searchName === targetSearch ||
-      fullName.includes(targetSearch) ||
-      fullName.includes(normalized.normalizedFullName.toLowerCase()) ||
-      normalizeThaiName(fullName).searchName.includes(targetSearch)
-    );
-  });
+  return Array.from(resultsMap.values());
 }
 
 /** Saves the latest active student bound to a LINE User ID for quick subsequent queries. */

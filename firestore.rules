@@ -81,8 +81,8 @@ service cloud.firestore {
     // 4. Users Collection
     // =========================================================================
     match /users/{userId} {
-      // Authenticated users can read profiles (classes, attendance lists, etc.)
-      allow read: if isAuthenticated();
+      // Authenticated users can read profiles, or public can read student profiles for Parent lookups
+      allow read: if isAuthenticated() || resource.data.role == 'student';
 
       // Create allowed for the authenticated owner
       allow create: if isUser(userId);

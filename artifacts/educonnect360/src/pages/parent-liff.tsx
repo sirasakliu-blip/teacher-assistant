@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import { signInAnonymously } from "firebase/auth";
+import { auth } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 import {
   initLiff,
@@ -50,6 +52,11 @@ export default function ParentLiff() {
 
         const fromRichMenu = sourceParam === "richmenu" || devParam;
         setIsRichMenuSource(fromRichMenu);
+
+        // Ensure Firebase Auth session exists so Firestore rules allow reads
+        if (auth && !auth.currentUser) {
+          signInAnonymously(auth).catch((e) => console.warn("Anonymous auth for LIFF:", e));
+        }
 
         // Initialize LIFF
         await initLiff();
@@ -125,16 +132,19 @@ export default function ParentLiff() {
     }
 
     setSearching(true);
-    setHasSearched(true);
     try {
       const results = await searchStudentsByQuery(query);
       setSearchResults(results);
+      setHasSearched(true);
     } catch (err) {
+      console.error("Search error:", err);
       toast({
         variant: "destructive",
         title: "ค้นหาไม่สำเร็จ",
         description: err instanceof Error ? err.message : "กรุณาลองใหม่อีกครั้ง",
       });
+      setSearchResults([]);
+      setHasSearched(true);
     } finally {
       setSearching(false);
     }
@@ -363,8 +373,17 @@ export default function ParentLiff() {
               )}
             </div>
 
+            {/* Searching Indicator */}
+            {searching && (
+              <div className="p-8 bg-white rounded-2xl border border-slate-200 text-center space-y-2 animate-pulse">
+                <i className="fa-solid fa-circle-notch fa-spin text-3xl text-emerald-600 block mx-auto mb-2" />
+                <p className="text-sm font-semibold text-slate-800">กำลังค้นหาข้อมูลนักเรียน...</p>
+                <p className="text-xs text-slate-500">โปรดรอสักครู่ ระบบกำลังดึงข้อมูล</p>
+              </div>
+            )}
+
             {/* Search Results */}
-            {hasSearched && (
+            {!searching && hasSearched && (
               <div className="space-y-3 animate-in fade-in">
                 <p className="text-xs font-semibold text-slate-500 px-1">
                   ผลการค้นหา ({searchResults.length} คน)
