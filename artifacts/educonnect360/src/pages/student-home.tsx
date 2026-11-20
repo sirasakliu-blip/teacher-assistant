@@ -13,6 +13,7 @@ import { coverGradient } from "@/lib/covers";
 import type { Class, LeaveRequest } from "@/types";
 import { LeaveRequestModal } from "@/components/leave-request-modal";
 import { LeaveDocumentModal } from "@/components/leave-document-modal";
+import { ChangePasswordModal } from "@/components/change-password-modal";
 
 export default function StudentHome() {
   const { profile, logout } = useAuth();
@@ -28,6 +29,7 @@ export default function StudentHome() {
   const [showLeaveList, setShowLeaveList] = useState(false);
   const [showCreateLeave, setShowCreateLeave] = useState(false);
   const [viewingLeave, setViewingLeave] = useState<LeaveRequest | null>(null);
+  const [showChangePassword, setShowChangePassword] = useState(false);
 
   // Parent Magic Link state
   const [currentToken, setCurrentToken] = useState<string>(profile?.parentViewToken || "");
@@ -176,6 +178,14 @@ export default function StudentHome() {
               </span>
             )}
           </div>
+          <button
+            onClick={() => setShowChangePassword(true)}
+            className="px-3.5 py-2 rounded-lg glass-panel text-sm font-semibold text-foreground hover:bg-white/60 dark:hover:bg-black/20 transition-all flex items-center gap-2"
+            title="เปลี่ยนรหัสผ่าน"
+          >
+            <i className="fa-solid fa-key text-primary" />
+            <span className="hidden sm:inline">เปลี่ยนรหัสผ่าน</span>
+          </button>
           <button
             onClick={logout}
             className="px-4 py-2 rounded-lg glass-panel text-sm font-semibold text-foreground hover:bg-white/60 dark:hover:bg-black/20 transition-all flex items-center gap-2"
@@ -472,6 +482,12 @@ export default function StudentHome() {
           canManage={false}
         />
       )}
+
+      {/* Modal เปลี่ยนรหัสผ่านสำหรับนักเรียน */}
+      <ChangePasswordModal
+        open={showChangePassword}
+        onClose={() => setShowChangePassword(false)}
+      />
     </div>
   );
 }
