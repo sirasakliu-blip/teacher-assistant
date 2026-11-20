@@ -3,6 +3,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { signInAnonymously } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
+import { StudentSchedulePanel } from "@/components/student-schedule-panel";
 import {
   initLiff,
   isLiffInClient,
@@ -968,10 +969,17 @@ export default function ParentLiff() {
             {/* TAB 4: SCHEDULE & CLASSES */}
             {activeTab === "schedule" && (
               <div className="space-y-4 animate-in fade-in">
+                {/* Daily Period Timetable */}
+                <StudentSchedulePanel
+                  gradeLevel={currentSummary.gradeLevel}
+                  studentClasses={studentClasses}
+                  readOnly={true}
+                />
+
                 <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-sm space-y-3">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                      <i className="fa-solid fa-clock text-indigo-600" />
+                      <i className="fa-solid fa-graduation-cap text-indigo-600" />
                       ห้องเรียนและวิชาที่ลงทะเบียน
                     </h3>
                     <span className="text-xs text-slate-400">

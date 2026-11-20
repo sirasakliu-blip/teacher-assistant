@@ -697,6 +697,185 @@ async function handler(req, res) {
             continue;
           }
         }
+
+        // 1. Richmenu / Quick action: การบ้าน & งานค้าง
+        if (/^(การบ้าน|งานค้าง|งานที่มอบหมาย|เช็คการบ้าน|homework)$/i.test(text)) {
+          const linked = userId ? await firestoreGetDoc("parent_line_links", userId) : null;
+          const targetUrl = `${WEB_BASE_URL}/parent-liff?tab=assignments&source=richmenu`;
+          await sendLineReply(replyToken, [
+            {
+              type: "flex",
+              altText: linked?.studentName ? `การบ้านของ ${linked.studentName}` : "การบ้านและงานค้าง",
+              contents: {
+                type: "bubble",
+                header: {
+                  type: "box",
+                  layout: "vertical",
+                  backgroundColor: "#065f46",
+                  paddingAll: "16px",
+                  contents: [
+                    { type: "text", text: "📚 การบ้าน & งานค้าง", color: "#ffffff", weight: "bold", size: "lg" },
+                    linked?.studentName
+                      ? { type: "text", text: `นักเรียน: ${linked.studentName} (${linked.studentId || ""})`, color: "#a7f3d0", size: "xs", margin: "xs" }
+                      : { type: "text", text: "ระบบติดตามการบ้านนักเรียน", color: "#a7f3d0", size: "xs", margin: "xs" }
+                  ]
+                },
+                body: {
+                  type: "box",
+                  layout: "vertical",
+                  paddingAll: "16px",
+                  contents: [
+                    {
+                      type: "text",
+                      text: linked?.studentName
+                        ? `คลิกปุ่มด้านล่างเพื่อตรวจสอบงานที่ค้างส่ง กำหนดส่ง และคะแนนของ ${linked.studentName} ได้ทันทีครับ`
+                        : "กรุณากดปุ่มเพื่อดูการบ้าน หรือพิมพ์ชื่อจริง/รหัสนักเรียนเพื่อเชื่อมต่อข้อมูลบุตรหลาน",
+                      wrap: true,
+                      size: "sm",
+                      color: "#334155"
+                    }
+                  ]
+                },
+                footer: {
+                  type: "box",
+                  layout: "vertical",
+                  paddingAll: "12px",
+                  contents: [
+                    {
+                      type: "button",
+                      style: "primary",
+                      color: "#065f46",
+                      action: {
+                        type: "uri",
+                        label: "📝 เปิดดูการบ้านและงานค้าง",
+                        uri: targetUrl
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]);
+          continue;
+        }
+
+        // 2. Richmenu / Quick action: แจ้งลาเรียน / ประวัติการลา
+        if (/^(แจ้งลา|แจ้งลาเรียน|ลาเรียน|ใบลา|ขอลากิจ|ลาป่วย|ประวัติการลา|leave)$/i.test(text)) {
+          const linked = userId ? await firestoreGetDoc("parent_line_links", userId) : null;
+          const targetUrl = `${WEB_BASE_URL}/parent-liff?tab=leave&source=richmenu`;
+          await sendLineReply(replyToken, [
+            {
+              type: "flex",
+              altText: "แจ้งลาเรียน / ประวัติการลา",
+              contents: {
+                type: "bubble",
+                header: {
+                  type: "box",
+                  layout: "vertical",
+                  backgroundColor: "#0284c7",
+                  paddingAll: "16px",
+                  contents: [
+                    { type: "text", text: "📝 ยื่นใบลา & ประวัติการลา", color: "#ffffff", weight: "bold", size: "lg" },
+                    linked?.studentName
+                      ? { type: "text", text: `นักเรียน: ${linked.studentName} (${linked.studentId || ""})`, color: "#bae6fd", size: "xs", margin: "xs" }
+                      : { type: "text", text: "ระบบยื่นใบลาและติดตามผล", color: "#bae6fd", size: "xs", margin: "xs" }
+                  ]
+                },
+                body: {
+                  type: "box",
+                  layout: "vertical",
+                  paddingAll: "16px",
+                  contents: [
+                    {
+                      type: "text",
+                      text: "ผู้ปกครองสามารถยื่นใบลาออนไลน์ และตรวจสอบสถานะการอนุมัติใบลาจากคุณครูได้สะดวกรวดเร็วครับ",
+                      wrap: true,
+                      size: "sm",
+                      color: "#334155"
+                    }
+                  ]
+                },
+                footer: {
+                  type: "box",
+                  layout: "vertical",
+                  paddingAll: "12px",
+                  contents: [
+                    {
+                      type: "button",
+                      style: "primary",
+                      color: "#0284c7",
+                      action: {
+                        type: "uri",
+                        label: "📩 เข้าสู่หน้าระบบใบลา",
+                        uri: targetUrl
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]);
+          continue;
+        }
+
+        // 3. Richmenu / Quick action: ตารางเรียน
+        if (/^(ตารางเรียน|ตารางสอน|คาบเรียน|ตาราง|schedule)$/i.test(text)) {
+          const linked = userId ? await firestoreGetDoc("parent_line_links", userId) : null;
+          const targetUrl = `${WEB_BASE_URL}/parent-liff?tab=schedule&source=richmenu`;
+          await sendLineReply(replyToken, [
+            {
+              type: "flex",
+              altText: "ตารางเรียนประจำวัน",
+              contents: {
+                type: "bubble",
+                header: {
+                  type: "box",
+                  layout: "vertical",
+                  backgroundColor: "#4f46e5",
+                  paddingAll: "16px",
+                  contents: [
+                    { type: "text", text: "🗓️ ตารางเรียนประจำวัน", color: "#ffffff", weight: "bold", size: "lg" },
+                    linked?.studentName
+                      ? { type: "text", text: `นักเรียน: ${linked.studentName} (${linked.studentId || ""})`, color: "#c7d2fe", size: "xs", margin: "xs" }
+                      : { type: "text", text: "ตารางเรียน ม.1 - ม.6", color: "#c7d2fe", size: "xs", margin: "xs" }
+                  ]
+                },
+                body: {
+                  type: "box",
+                  layout: "vertical",
+                  paddingAll: "16px",
+                  contents: [
+                    {
+                      type: "text",
+                      text: "ตรวจสอบรายวิชาที่เรียน คาบสอน เวลาเรียน ห้องเรียน และครูผู้สอนแบบทั้งวันและทั้งสัปดาห์ได้ทันทีครับ",
+                      wrap: true,
+                      size: "sm",
+                      color: "#334155"
+                    }
+                  ]
+                },
+                footer: {
+                  type: "box",
+                  layout: "vertical",
+                  paddingAll: "12px",
+                  contents: [
+                    {
+                      type: "button",
+                      style: "primary",
+                      color: "#4f46e5",
+                      action: {
+                        type: "uri",
+                        label: "📅 เปิดดูตารางเรียน",
+                        uri: targetUrl
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]);
+          continue;
+        }
         const students = await findStudents(text);
         if (students.length === 0) {
           await sendLineReply(replyToken, [

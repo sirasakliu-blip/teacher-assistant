@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 interface StudentSchedulePanelProps {
   gradeLevel?: string | null;
   studentClasses?: Class[];
+  readOnly?: boolean;
 }
 
 const DAY_LABELS: Record<DayOfWeek, { thai: string; short: string; color: string }> = {
@@ -58,7 +59,7 @@ function getPeriodStatus(item: ScheduleItem, currentDay: DayOfWeek): "ongoing" |
   return "upcoming";
 }
 
-export function StudentSchedulePanel({ gradeLevel, studentClasses = [] }: StudentSchedulePanelProps) {
+export function StudentSchedulePanel({ gradeLevel, studentClasses = [], readOnly = false }: StudentSchedulePanelProps) {
   const { toast } = useToast();
   const todayDay = getTodayDayOfWeek();
   const [selectedDay, setSelectedDay] = useState<DayOfWeek>(todayDay);
@@ -206,36 +207,40 @@ export function StudentSchedulePanel({ gradeLevel, studentClasses = [] }: Studen
             </button>
           </div>
 
-          <button
-            onClick={() => {
-              setIsAddingNew(true);
-              setEditingItem({
-                id: `new_${Date.now()}`,
-                day: selectedDay,
-                period: currentDayItems.length + 1,
-                startTime: "08:30",
-                endTime: "09:20",
-                subjectName: "",
-                subjectCode: "",
-                teacherName: "",
-                room: `ห้อง ${resolvedGrade}`,
-                color: "emerald",
-              });
-            }}
-            className="px-3 py-2 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer"
-            title="เพิ่มคาบเรียนใหม่"
-          >
-            <i className="fa-solid fa-plus" />
-            <span>เพิ่มวิชา</span>
-          </button>
+          {!readOnly && (
+            <>
+              <button
+                onClick={() => {
+                  setIsAddingNew(true);
+                  setEditingItem({
+                    id: `new_${Date.now()}`,
+                    day: selectedDay,
+                    period: currentDayItems.length + 1,
+                    startTime: "08:30",
+                    endTime: "09:20",
+                    subjectName: "",
+                    subjectCode: "",
+                    teacherName: "",
+                    room: `ห้อง ${resolvedGrade}`,
+                    color: "emerald",
+                  });
+                }}
+                className="px-3 py-2 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer"
+                title="เพิ่มคาบเรียนใหม่"
+              >
+                <i className="fa-solid fa-plus" />
+                <span>เพิ่มวิชา</span>
+              </button>
 
-          <button
-            onClick={handleResetDefault}
-            className="px-2.5 py-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted/60 text-xs font-medium transition flex items-center gap-1 cursor-pointer"
-            title="รีเซ็ตกลับเป็นตารางมาตรฐาน"
-          >
-            <i className="fa-solid fa-arrow-rotate-left text-xs" />
-          </button>
+              <button
+                onClick={handleResetDefault}
+                className="px-2.5 py-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted/60 text-xs font-medium transition flex items-center gap-1 cursor-pointer"
+                title="รีเซ็ตกลับเป็นตารางมาตรฐาน"
+              >
+                <i className="fa-solid fa-arrow-rotate-left text-xs" />
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -345,16 +350,18 @@ export function StudentSchedulePanel({ gradeLevel, studentClasses = [] }: Studen
                               กำลังเรียน
                             </span>
                           )}
-                          <button
-                            onClick={() => {
-                              setIsAddingNew(false);
-                              setEditingItem(item);
-                            }}
-                            className="w-6 h-6 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 flex items-center justify-center text-muted-foreground hover:text-foreground text-[11px] transition cursor-pointer"
-                            title="แก้ไขคาบนี้"
-                          >
-                            <i className="fa-solid fa-pen" />
-                          </button>
+                          {!readOnly && (
+                            <button
+                              onClick={() => {
+                                setIsAddingNew(false);
+                                setEditingItem(item);
+                              }}
+                              className="w-6 h-6 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 flex items-center justify-center text-muted-foreground hover:text-foreground text-[11px] transition cursor-pointer"
+                              title="แก้ไขคาบนี้"
+                            >
+                              <i className="fa-solid fa-pen" />
+                            </button>
+                          )}
                         </div>
                       </div>
 
@@ -441,16 +448,18 @@ export function StudentSchedulePanel({ gradeLevel, studentClasses = [] }: Studen
                                   กำลังเรียน
                                 </span>
                               )}
-                              <button
-                                onClick={() => {
-                                  setIsAddingNew(false);
-                                  setEditingItem(item);
-                                }}
-                                className="w-6 h-6 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 flex items-center justify-center text-muted-foreground hover:text-foreground text-[11px] transition cursor-pointer"
-                                title="แก้ไขคาบนี้"
-                              >
-                                <i className="fa-solid fa-pen" />
-                              </button>
+                              {!readOnly && (
+                                <button
+                                  onClick={() => {
+                                    setIsAddingNew(false);
+                                    setEditingItem(item);
+                                  }}
+                                  className="w-6 h-6 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 flex items-center justify-center text-muted-foreground hover:text-foreground text-[11px] transition cursor-pointer"
+                                  title="แก้ไขคาบนี้"
+                                >
+                                  <i className="fa-solid fa-pen" />
+                                </button>
+                              )}
                             </div>
                           </div>
 
@@ -538,10 +547,14 @@ export function StudentSchedulePanel({ gradeLevel, studentClasses = [] }: Studen
                         <td key={p} className="py-2 px-1 text-center">
                           <div
                             onClick={() => {
-                              setIsAddingNew(false);
-                              setEditingItem(item);
+                              if (!readOnly) {
+                                setIsAddingNew(false);
+                                setEditingItem(item);
+                              }
                             }}
-                            className={`p-2 rounded-xl text-left cursor-pointer transition hover:scale-[1.02] border ${colorTheme.bg} ${colorTheme.border}`}
+                            className={`p-2 rounded-xl text-left transition border ${colorTheme.bg} ${colorTheme.border} ${
+                              readOnly ? "cursor-default" : "cursor-pointer hover:scale-[1.02]"
+                            }`}
                           >
                             <div className="font-bold text-xs truncate max-w-[110px]">{item.subjectName}</div>
                             <div className="text-[10px] text-muted-foreground truncate">{item.teacherName}</div>
