@@ -6,10 +6,12 @@ import {
   type ReactNode,
 } from "react";
 import {
+  GoogleAuthProvider,
   createUserWithEmailAndPassword,
   onAuthStateChanged,
   sendEmailVerification,
   signInWithEmailAndPassword,
+  signInWithPopup,
   signOut,
   updateProfile,
   type User as FirebaseUser,
@@ -43,6 +45,7 @@ interface AuthContextValue {
   resendVerificationEmail: () => Promise<void>;
   reloadUser: () => Promise<FirebaseUser | null>;
   login: (email: string, password: string) => Promise<void>;
+  loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -279,6 +282,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(userProfile);
   }
 
+  async function loginWithGoogle() {
+    if (!auth || !db) throw new Error("Firebase Auth is not configured.");
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account" });
+    const credential = await signInWithPopup(auth, provider);
+    const user = credential.user;
+
+    // Check existing profile
+    let userProfile = await getUserProfile(user.uid);
+    if (!userProfile) {
+      const cleanEmail = (user.email || "").trim().toLowerCase();
+      // Check if email is an approved admin in whitelist
+      const isApprovedAdmin = await checkAdminWhitelist(cleanEmail);
+      const role: UserRole = isApprovedAdmin ? "admin" : "teacher";
+
+      const newProfile: Partial<User> = {
+        uid: user.uid,
+        email: user.email || "",
+        displayName: user.displayName || user.email?.split("@")[0] || "คุณครู",
+        fullName: user.displayName || user.email?.split("@")[0] || "คุณครู",
+        role: role,
+        linkedStudentIds: [],
+        photoURL: user.photoURL || null,
+        createdAt: serverTimestamp() as any,
+        updatedAt: serverTimestamp() as any,
+      };
+
+      await setDoc(doc(db, "users", user.uid), newProfile);
+      userProfile = await getUserProfile(user.uid);
+    }
+
+    setFirebaseUser(user);
+    setProfile(userProfile);
+  }
+
   async function logout() {
     if (!auth) return;
     await signOut(auth);
@@ -297,6 +335,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         resendVerificationEmail,
         reloadUser,
         login,
+        loginWithGoogle,
         logout,
       }}
     >
