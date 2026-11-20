@@ -510,7 +510,7 @@ export default function Register() {
                     required
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
-                    placeholder="เช่น อาจารย์สมคิด จิตมั่นคง"
+                    placeholder="กรุณาใส่ชื่อ - นามสกุล"
                     className="w-full px-4 py-2.5 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm placeholder:text-muted-foreground/70"
                   />
                   <i className="fa-solid fa-user absolute right-3.5 top-3.5 text-muted-foreground/60 text-xs pointer-events-none" />
