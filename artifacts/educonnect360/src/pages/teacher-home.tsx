@@ -85,7 +85,7 @@ export default function TeacherHome() {
             </div>
             <h3 className="text-xl font-bold text-foreground mb-2">ยังไม่มีห้องเรียนในระบบ</h3>
             <p className="text-muted-foreground text-sm max-w-md mx-auto mb-4">
-              ห้องเรียนจะถูกสร้างและจัดสรรตามชั้นเรียนโดยอัตโนมัติ เมื่อผู้ดูแลระบบ (Admin) นำเข้าไฟล์ Excel นักเรียน
+              ห้องเรียนจะถูกสร้างและจัดสรรตามชั้นเรียนโดยอัตโนมัติ
             </p>
             <button
               onClick={refresh}

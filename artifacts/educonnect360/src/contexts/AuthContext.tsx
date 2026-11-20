@@ -72,6 +72,7 @@ interface AuthContextValue {
     password?: string,
   ) => Promise<void>;
   logout: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -593,6 +594,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null);
   }
 
+  async function refreshProfile() {
+    if (auth?.currentUser) {
+      const userProfile = await getUserProfile(auth.currentUser.uid);
+      setProfile(userProfile);
+    }
+  }
+
   return (
     <AuthContext.Provider
       value={{
@@ -610,6 +618,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         registerTeacherWithEmail,
         registerTeacherWithGoogle,
         logout,
+        refreshProfile,
       }}
     >
       {children}

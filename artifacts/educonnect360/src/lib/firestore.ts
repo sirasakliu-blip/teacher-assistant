@@ -2300,7 +2300,7 @@ export async function updateTeacherContactProfile(
   if (data.phoneNumber !== undefined) payload.phoneNumber = data.phoneNumber.trim();
   if (data.lineId !== undefined) payload.lineId = data.lineId.trim();
 
-  await updateDoc(ref, payload);
+  await setDoc(ref, payload, { merge: true });
 }
 
 /** Retrieves contact details for all teachers associated with a student's enrolled classes. */

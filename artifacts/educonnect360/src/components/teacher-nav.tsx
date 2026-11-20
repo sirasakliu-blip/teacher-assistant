@@ -82,7 +82,6 @@ export function TeacherNav() {
       <TeacherProfileModal
         open={showProfileModal}
         onClose={() => setShowProfileModal(false)}
-        onSuccess={() => window.location.reload()}
       />
     </nav>
   );

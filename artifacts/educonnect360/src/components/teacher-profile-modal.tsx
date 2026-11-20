@@ -1,7 +1,8 @@
 import { useState, useEffect, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { updateTeacherContactProfile, getUserProfile } from "@/lib/firestore";
+import { updateTeacherContactProfile } from "@/lib/firestore";
 
 interface TeacherProfileModalProps {
   open: boolean;
@@ -10,7 +11,7 @@ interface TeacherProfileModalProps {
 }
 
 export function TeacherProfileModal({ open, onClose, onSuccess }: TeacherProfileModalProps) {
-  const { profile } = useAuth();
+  const { profile, firebaseUser, refreshProfile } = useAuth();
   const { toast } = useToast();
   const [displayName, setDisplayName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -22,14 +23,38 @@ export function TeacherProfileModal({ open, onClose, onSuccess }: TeacherProfile
       setDisplayName(profile.displayName || profile.fullName || "");
       setPhoneNumber(profile.phoneNumber || "");
       setLineId(profile.lineId || "");
+    } else if (firebaseUser) {
+      setDisplayName(firebaseUser.displayName || "");
     }
-  }, [profile, open]);
+  }, [profile, firebaseUser, open]);
+
+  // Lock scroll & ESC key to close
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = "";
+    };
+  }, [open, onClose]);
 
   if (!open) return null;
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!profile?.id) return;
+    const targetUid = profile?.id || profile?.uid || firebaseUser?.uid;
+    if (!targetUid) {
+      toast({
+        variant: "destructive",
+        title: "ไม่พบบัญชีผู้ใช้งาน",
+        description: "กรุณาลองเข้าสู่ระบบใหม่อีกครั้ง",
+      });
+      return;
+    }
 
     if (!displayName.trim()) {
       toast({
@@ -41,11 +66,15 @@ export function TeacherProfileModal({ open, onClose, onSuccess }: TeacherProfile
 
     setSubmitting(true);
     try {
-      await updateTeacherContactProfile(profile.id, {
+      await updateTeacherContactProfile(targetUid, {
         displayName: displayName.trim(),
         phoneNumber: phoneNumber.trim(),
         lineId: lineId.trim(),
       });
+
+      if (refreshProfile) {
+        await refreshProfile();
+      }
 
       toast({
         title: "บันทึกข้อมูลติดต่อครูสำเร็จ",
@@ -66,9 +95,19 @@ export function TeacherProfileModal({ open, onClose, onSuccess }: TeacherProfile
     }
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fade-in">
-      <div className="rounded-3xl p-6 sm:p-8 w-full max-w-md bg-card text-card-foreground border border-border shadow-2xl relative z-10">
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div
+        className="rounded-3xl p-6 sm:p-8 w-full max-w-md bg-card text-card-foreground border border-border shadow-2xl relative z-10 animate-scale-in"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
@@ -84,7 +123,7 @@ export function TeacherProfileModal({ open, onClose, onSuccess }: TeacherProfile
           <button
             type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground hover:bg-muted transition"
+            className="w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground transition cursor-pointer"
           >
             <i className="fa-solid fa-xmark" />
           </button>
@@ -144,14 +183,14 @@ export function TeacherProfileModal({ open, onClose, onSuccess }: TeacherProfile
             <button
               type="button"
               onClick={onClose}
-              className="w-1/2 py-2.5 rounded-xl border border-border text-foreground hover:bg-muted font-medium text-xs transition"
+              className="w-1/2 py-2.5 rounded-xl border border-border text-foreground hover:bg-muted font-medium text-xs transition cursor-pointer"
             >
               ยกเลิก
             </button>
             <button
               type="submit"
               disabled={submitting}
-              className="w-1/2 py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-xs hover:bg-primary/90 transition shadow-md shadow-primary/20 disabled:opacity-60 flex items-center justify-center gap-1.5"
+              className="w-1/2 py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-xs hover:bg-primary/90 transition shadow-md shadow-primary/20 disabled:opacity-60 flex items-center justify-center gap-1.5 cursor-pointer"
             >
               {submitting ? (
                 <>
@@ -168,6 +207,7 @@ export function TeacherProfileModal({ open, onClose, onSuccess }: TeacherProfile
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

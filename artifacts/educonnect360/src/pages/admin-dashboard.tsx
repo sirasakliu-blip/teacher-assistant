@@ -20,6 +20,7 @@ import {
 } from "@/lib/firestore";
 import { parseExcelOrCsv, exportToExcel } from "@/lib/excel-helper";
 import { CreateStudentDialog } from "@/components/create-student-dialog";
+import { TeacherProfileModal } from "@/components/teacher-profile-modal";
 
 export default function AdminDashboard() {
   const { profile, firebaseUser } = useAuth();
@@ -74,6 +75,7 @@ export default function AdminDashboard() {
   const [togglingToken, setTogglingToken] = useState<string | null>(null);
   const [resettingTokenForStudent, setResettingTokenForStudent] = useState<string | null>(null);
   const [showCreateStudent, setShowCreateStudent] = useState(false);
+  const [showContactModal, setShowContactModal] = useState(false);
 
   // Subscribe to Teacher Invites
   useEffect(() => {
@@ -561,6 +563,14 @@ export default function AdminDashboard() {
               <i className="fa-solid fa-user-shield mr-1" />
               {profile?.email || firebaseUser?.email || "Admin"}
             </span>
+            <button
+              onClick={() => setShowContactModal(true)}
+              className="px-3.5 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+              title="แก้ไขข้อมูลติดต่อคุณครู (เบอร์โทรศัพท์ / LINE ID สำหรับผู้ปกครอง)"
+            >
+              <i className="fa-solid fa-address-card text-emerald-600" />
+              <span>ข้อมูลติดต่อครู</span>
+            </button>
             <Link
               href="/teacher"
               className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-sm flex items-center gap-1.5 transition"
@@ -610,6 +620,12 @@ export default function AdminDashboard() {
             >
               <i className="fa-solid fa-wand-magic-sparkles text-emerald-600" /> ผู้ช่วยสอน AI
             </Link>
+            <button
+              onClick={() => setShowContactModal(true)}
+              className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:border-emerald-500 hover:text-emerald-700 text-slate-700 text-xs font-semibold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+            >
+              <i className="fa-solid fa-address-card text-emerald-600" /> ข้อมูลติดต่อครู
+            </button>
           </div>
         </div>
         {/* Navigation Tabs */}
@@ -1438,6 +1454,11 @@ export default function AdminDashboard() {
         open={showCreateStudent}
         onClose={() => setShowCreateStudent(false)}
         onSuccess={() => loadUsersAndTokens()}
+      />
+
+      <TeacherProfileModal
+        open={showContactModal}
+        onClose={() => setShowContactModal(false)}
       />
     </div>
   );
