@@ -3232,3 +3232,267 @@ export async function saveClassSchedule(
   });
 }
 
+/** Retrieves all check-in attendance records for a student. */
+export async function getAttendanceForStudent(studentId: string): Promise<Attendance[]> {
+  const database = requireDb();
+  try {
+    const snaps = await getDocs(
+      query(collection(database, "attendance"), where("studentId", "==", studentId)),
+    );
+    return snaps.docs
+      .map((d) => mapAttendanceDoc(d.id, d.data()))
+      .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  } catch (err) {
+    console.warn("Failed to get attendance for student:", err);
+    return [];
+  }
+}
+
+/** Comprehensive attendance breakdown by subject and history for Parent Portal & LINE Bot. */
+export async function getDetailedStudentAttendance(studentUid: string) {
+  const database = requireDb();
+  const [classes, allRecords] = await Promise.all([
+    getClassesForStudent(studentUid),
+    getAttendanceForStudent(studentUid),
+  ]);
+
+  // Today in Thai timezone (YYYY-MM-DD)
+  const todayStr = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+
+  const classMap = new Map<string, Class>();
+  for (const c of classes) {
+    classMap.set(c.id, c);
+  }
+
+  // Today's check-in status per subject
+  const todaySubjectStatus = classes.map((c) => {
+    const record = allRecords.find((r) => r.classId === c.id && r.date === todayStr);
+    let timeStr: string | undefined;
+    if (record?.checkedInAt) {
+      try {
+        const d = new Date(record.checkedInAt);
+        timeStr =
+          d.toLocaleTimeString("th-TH", {
+            hour: "2-digit",
+            minute: "2-digit",
+            timeZone: "Asia/Bangkok",
+          }) + " น.";
+      } catch {
+        // ignore
+      }
+    }
+    return {
+      classId: c.id,
+      className: c.name,
+      teacherName: c.teacherName || "คุณครูผู้สอน",
+      gradeLevel: c.gradeLevel,
+      status: (record ? record.status : "not_checked") as AttendanceStatus | "not_checked",
+      time: timeStr,
+    };
+  });
+
+  // Subjects marked as "absent" today
+  const missingSubjectsToday = todaySubjectStatus.filter((s) => s.status === "absent");
+
+  // Historical records enriched with subject name
+  const historicalRecords = allRecords.slice(0, 30).map((r) => {
+    const cls = classMap.get(r.classId);
+    let timeStr: string | undefined;
+    if (r.checkedInAt) {
+      try {
+        const d = new Date(r.checkedInAt);
+        timeStr =
+          d.toLocaleTimeString("th-TH", {
+            hour: "2-digit",
+            minute: "2-digit",
+            timeZone: "Asia/Bangkok",
+          }) + " น.";
+      } catch {
+        // ignore
+      }
+    }
+    return {
+      id: r.id,
+      classId: r.classId,
+      className: cls?.name || "วิชาเรียนทั่วไป",
+      date: r.date,
+      status: r.status,
+      time: timeStr,
+    };
+  });
+
+  const presentCount = allRecords.filter((a) => a.status === "present").length;
+  const lateCount = allRecords.filter((a) => a.status === "late").length;
+  const excusedCount = allRecords.filter((a) => a.status === "excused").length;
+  const absentCount = allRecords.filter((a) => a.status === "absent").length;
+  const totalCount = allRecords.length;
+  const rate = totalCount > 0 ? Math.round(((presentCount + lateCount) / totalCount) * 100) : 100;
+
+  return {
+    todayStr,
+    classes,
+    todaySubjectStatus,
+    missingSubjectsToday,
+    historicalRecords,
+    stats: {
+      present: presentCount,
+      late: lateCount,
+      excused: excusedCount,
+      absent: absentCount,
+      total: totalCount,
+      rate,
+    },
+  };
+}
+
+/** Retrieves all registered teachers and admins from users collection. */
+export async function getAllTeachers(): Promise<User[]> {
+  const database = requireDb();
+  try {
+    const snaps = await getDocs(
+      query(collection(database, "users"), where("role", "in", ["teacher", "admin"])),
+    );
+    return snaps.docs
+      .map((d) => {
+        const data = d.data();
+        return {
+          id: d.id,
+          uid: data.uid || d.id,
+          email: data.email || "",
+          displayName: data.displayName || data.fullName || "คุณครู",
+          fullName: data.fullName || data.displayName || "คุณครู",
+          role: data.role || "teacher",
+          advisorRoom: data.advisorRoom || data.gradeLevel || "",
+          gradeLevel: data.gradeLevel || data.advisorRoom || "",
+          phoneNumber: data.phoneNumber || "",
+          lineId: data.lineId || "",
+          linkedStudentIds: [],
+          createdAt: tsToISO(data.createdAt),
+          updatedAt: tsToISO(data.updatedAt),
+        } as User;
+      })
+      .sort((a, b) => (a.fullName || "").localeCompare(b.fullName || ""));
+  } catch (err) {
+    console.warn("Failed to get all teachers:", err);
+    return [];
+  }
+}
+
+/** Generates a realistic weekly teaching schedule for a teacher based on their classes/subjects. */
+export function generateDefaultTeacherSchedule(
+  teacher: Partial<User>,
+  classes: Class[] = [],
+): ScheduleItem[] {
+  const teacherName = teacher.fullName || teacher.displayName || "คุณครู";
+  const advisor = teacher.advisorRoom || teacher.gradeLevel || "ม.2/1";
+
+  // Subjects taught by teacher or defaults
+  const subjectList: Array<{ name: string; code: string; room: string; color: ScheduleItem["color"] }> = [];
+  if (classes.length > 0) {
+    for (const c of classes) {
+      subjectList.push({
+        name: c.name,
+        code: `วช-${c.gradeLevel || "201"}`,
+        room: `ห้อง ${c.gradeLevel || advisor}`,
+        color: "emerald",
+      });
+    }
+  }
+
+  if (subjectList.length === 0) {
+    subjectList.push(
+      { name: "คณิตศาสตร์พื้นฐาน", code: "ค22101", room: `ห้อง ${advisor}`, color: "purple" },
+      { name: "คณิตศาสตร์เพิ่มเติม", code: "ค22201", room: "ห้อง 214", color: "blue" },
+      { name: "กิจกรรมโฮมรูม / แนะแนว", code: "ก22901", room: `ห้อง ${advisor}`, color: "indigo" },
+    );
+  }
+
+  const periodTimes = [
+    { period: 1, startTime: "08:30", endTime: "09:20" },
+    { period: 2, startTime: "09:20", endTime: "10:10" },
+    { period: 3, startTime: "10:20", endTime: "11:10" },
+    { period: 4, startTime: "11:10", endTime: "12:00" },
+    { period: 5, startTime: "13:00", endTime: "13:50" },
+    { period: 6, startTime: "13:50", endTime: "14:40" },
+  ];
+
+  const days: DayOfWeek[] = ["monday", "tuesday", "wednesday", "thursday", "friday"];
+  const items: ScheduleItem[] = [];
+
+  days.forEach((day, dIdx) => {
+    // 3-4 teaching periods per day
+    const teachingPeriods = [1 + (dIdx % 2), 3, 5];
+    teachingPeriods.forEach((pNum, pIdx) => {
+      const pt = periodTimes.find((p) => p.period === pNum) || periodTimes[0];
+      const subj = subjectList[(dIdx + pIdx) % subjectList.length];
+      items.push({
+        id: `teach_${day}_p${pt.period}`,
+        day,
+        period: pt.period,
+        startTime: pt.startTime,
+        endTime: pt.endTime,
+        subjectName: subj.name,
+        subjectCode: subj.code,
+        teacherName,
+        room: subj.room,
+        color: subj.color,
+      });
+    });
+  });
+
+  return items;
+}
+
+/** Retrieves teaching timetable for a specific teacher. */
+export async function getTeacherSchedule(
+  teacherId: string,
+  teacherUser?: Partial<User> | null,
+  classes: Class[] = [],
+): Promise<ScheduleItem[]> {
+  const database = requireDb();
+  if (!teacherId) return [];
+
+  try {
+    const snap = await withTimeout(getDoc(doc(database, "teacher_schedules", teacherId)), 3000);
+    if (snap.exists()) {
+      const data = snap.data();
+      if (Array.isArray(data.items) && data.items.length > 0) {
+        return data.items;
+      }
+    }
+  } catch (err) {
+    console.warn("Could not fetch teacher schedule from firestore:", err);
+  }
+
+  // Fallback to generated default teaching schedule
+  const fallbackTeacher: Partial<User> = teacherUser || {
+    id: teacherId,
+    displayName: "คุณครูผู้สอน",
+    fullName: "คุณครูผู้สอน",
+    advisorRoom: "ม.2/1",
+  };
+  return generateDefaultTeacherSchedule(fallbackTeacher, classes);
+}
+
+/** Saves teaching timetable for a specific teacher. */
+export async function saveTeacherSchedule(
+  teacherId: string,
+  items: ScheduleItem[],
+  teacherName?: string,
+): Promise<void> {
+  const database = requireDb();
+  if (!teacherId) return;
+
+  await setDoc(doc(database, "teacher_schedules", teacherId), {
+    teacherId,
+    teacherName: teacherName || "คุณครู",
+    items,
+    updatedAt: serverTimestamp(),
+  });
+}
+

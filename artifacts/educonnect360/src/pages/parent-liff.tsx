@@ -21,6 +21,7 @@ import {
   getStudentHomeworkDetailed,
   getLeaveRequestsForStudent,
   getAnnouncementsForStudent,
+  getDetailedStudentAttendance,
 } from "@/lib/firestore";
 import type {
   Announcement,
@@ -71,21 +72,24 @@ export default function ParentLiff() {
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [teacherContacts, setTeacherContacts] = useState<TeacherContact[]>([]);
+  const [attendanceDetails, setAttendanceDetails] = useState<any | null>(null);
 
   async function loadStudentDetails(studentUid: string) {
     setLoadingDetails(true);
     try {
-      const [teachers, hwData, leaves, ann] = await Promise.all([
+      const [teachers, hwData, leaves, ann, att] = await Promise.all([
         getTeacherContactsForStudent(studentUid),
         getStudentHomeworkDetailed(studentUid),
         getLeaveRequestsForStudent(studentUid),
         getAnnouncementsForStudent(studentUid),
+        getDetailedStudentAttendance(studentUid),
       ]);
       setTeacherContacts(teachers);
       setHomeworkList(hwData.homeworkList);
       setStudentClasses(hwData.classes);
       setLeaveRequests(leaves);
       setAnnouncements(ann);
+      setAttendanceDetails(att);
     } catch (err) {
       console.warn("Error loading student details:", err);
     } finally {
@@ -660,6 +664,23 @@ export default function ParentLiff() {
             {/* TAB 1: ATTENDANCE & GRADES */}
             {activeTab === "attendance" && (
               <div className="space-y-4 animate-in fade-in">
+                {/* Absent Alert Banner if student missed any class today */}
+                {attendanceDetails?.missingSubjectsToday && attendanceDetails.missingSubjectsToday.length > 0 && (
+                  <div className="rounded-3xl p-5 border-2 border-rose-400 bg-rose-50 text-rose-950 shadow-sm space-y-2 animate-pulse">
+                    <div className="flex items-center gap-2 font-bold text-rose-700 text-sm">
+                      <i className="fa-solid fa-triangle-exclamation text-lg text-rose-600" />
+                      แจ้งเตือนด่วน: ตรวจพบนักเรียนไม่เข้าเรียนวันนี้ ({attendanceDetails.missingSubjectsToday.length} วิชา)
+                    </div>
+                    <p className="text-xs text-rose-800 leading-relaxed">
+                      บุตรหลานของท่านขาดเรียนในวิชา:{" "}
+                      <strong>{attendanceDetails.missingSubjectsToday.map((s: any) => s.className).join(", ")}</strong>
+                    </p>
+                    <p className="text-[11px] text-rose-700 opacity-90">
+                      กรุณาสอบถามสาเหตุหรือติดต่อคุณครูประจำชั้นผ่านแท็บ "ติดต่อคุณครู" ด้านล่างครับ
+                    </p>
+                  </div>
+                )}
+
                 {/* Today's Status Box */}
                 <div
                   className={`rounded-3xl p-5 border-2 shadow-sm space-y-1 ${
@@ -676,7 +697,7 @@ export default function ParentLiff() {
                 >
                   <div className="flex items-center justify-between">
                     <p className="text-xs font-bold uppercase tracking-wider opacity-70">
-                      สถานะการเข้าเรียนวันนี้
+                      สถานะภาพรวมการเข้าเรียนวันนี้
                     </p>
                     <span className="text-xs opacity-70 font-mono">
                       {new Date().toLocaleDateString("th-TH", {
@@ -703,6 +724,63 @@ export default function ParentLiff() {
                       : "บันทึกในระบบเรียบร้อย"}
                   </p>
                 </div>
+
+                {/* Per-Subject Today Attendance Card */}
+                {attendanceDetails?.todaySubjectStatus && (
+                  <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-sm space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                        <i className="fa-solid fa-clipboard-user text-emerald-600" />
+                        การเข้าเรียนแยกตามรายวิชาวันนี้
+                      </h3>
+                      <span className="text-xs text-slate-400">
+                        {attendanceDetails.todaySubjectStatus.length} วิชา
+                      </span>
+                    </div>
+
+                    {attendanceDetails.todaySubjectStatus.length === 0 ? (
+                      <p className="text-xs text-slate-400 text-center py-4">
+                        ยังไม่มีรายวิชาที่นักเรียนลงทะเบียนในระบบ
+                      </p>
+                    ) : (
+                      <div className="divide-y divide-slate-100 space-y-2">
+                        {attendanceDetails.todaySubjectStatus.map((subj: any, sIdx: number) => (
+                          <div key={sIdx} className="pt-2.5 first:pt-0 flex items-center justify-between gap-3">
+                            <div className="space-y-0.5 min-w-0">
+                              <p className="font-bold text-slate-900 text-sm truncate">{subj.className}</p>
+                              <p className="text-xs text-slate-500 truncate">
+                                ผู้สอน: {subj.teacherName} {subj.time ? `• เวลา ${subj.time}` : ""}
+                              </p>
+                            </div>
+                            <div className="shrink-0">
+                              {subj.status === "present" ? (
+                                <span className="px-2.5 py-1 rounded-xl text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                                  <i className="fa-solid fa-circle-check text-emerald-600" /> เข้าเรียน
+                                </span>
+                              ) : subj.status === "absent" ? (
+                                <span className="px-2.5 py-1 rounded-xl text-xs font-bold bg-rose-100 text-rose-800 border border-rose-200 flex items-center gap-1 animate-pulse">
+                                  <i className="fa-solid fa-circle-xmark text-rose-600" /> ไม่เข้าเรียน (ขาด)
+                                </span>
+                              ) : subj.status === "late" ? (
+                                <span className="px-2.5 py-1 rounded-xl text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-1">
+                                  <i className="fa-solid fa-clock text-amber-600" /> มาสาย
+                                </span>
+                              ) : subj.status === "excused" ? (
+                                <span className="px-2.5 py-1 rounded-xl text-xs font-bold bg-sky-100 text-sky-800 border border-sky-200 flex items-center gap-1">
+                                  <i className="fa-solid fa-file-signature text-sky-600" /> ลา (มีใบลา)
+                                </span>
+                              ) : (
+                                <span className="px-2.5 py-1 rounded-xl text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                                  ยังไม่ถึงคาบ / รอเช็ค
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Attendance Accumulation Statistics */}
                 <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-sm space-y-3">
@@ -746,6 +824,54 @@ export default function ParentLiff() {
                     </div>
                   </div>
                 </div>
+
+                {/* Historical Attendance Log */}
+                {attendanceDetails?.historicalRecords && attendanceDetails.historicalRecords.length > 0 && (
+                  <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-sm space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                        <i className="fa-solid fa-clock-rotate-left text-slate-600" />
+                        ประวัติการเข้าเรียนย้อนหลังทั้งหมด
+                      </h3>
+                      <span className="text-xs text-slate-400">
+                        {attendanceDetails.historicalRecords.length} บันทึก
+                      </span>
+                    </div>
+
+                    <div className="max-h-64 overflow-y-auto divide-y divide-slate-100 text-xs pr-1">
+                      {attendanceDetails.historicalRecords.map((rec: any, rIdx: number) => (
+                        <div key={rIdx} className="py-2.5 flex items-center justify-between gap-2">
+                          <div>
+                            <p className="font-bold text-slate-800">{rec.className}</p>
+                            <p className="text-[11px] text-slate-400">วันที่: {rec.date} {rec.time ? `• ${rec.time}` : ""}</p>
+                          </div>
+                          <div>
+                            {rec.status === "present" && (
+                              <span className="text-emerald-700 font-bold bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+                                🟢 เข้าเรียน
+                              </span>
+                            )}
+                            {rec.status === "absent" && (
+                              <span className="text-rose-700 font-bold bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200">
+                                🔴 ขาดเรียน
+                              </span>
+                            )}
+                            {rec.status === "late" && (
+                              <span className="text-amber-700 font-bold bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
+                                🟡 มาสาย
+                              </span>
+                            )}
+                            {rec.status === "excused" && (
+                              <span className="text-sky-700 font-bold bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-200">
+                                🔵 ลาเรียน
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Academic Grades Section */}
                 <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-sm space-y-3">

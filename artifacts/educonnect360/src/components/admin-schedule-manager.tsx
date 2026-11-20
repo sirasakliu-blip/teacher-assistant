@@ -1,9 +1,13 @@
 import { useState, useEffect } from "react";
-import type { ScheduleItem, DayOfWeek } from "@/types";
+import type { ScheduleItem, DayOfWeek, User } from "@/types";
 import {
   getClassSchedule,
   saveClassSchedule,
   generateDefaultSchedule,
+  getAllTeachers,
+  getTeacherSchedule,
+  saveTeacherSchedule,
+  generateDefaultTeacherSchedule,
 } from "@/lib/firestore";
 import { useToast } from "@/hooks/use-toast";
 
@@ -36,8 +40,19 @@ const COLOR_CLASSES: Record<string, { bg: string; text: string; border: string; 
 
 export function AdminScheduleManager() {
   const { toast } = useToast();
+  // Type switcher: Student Timetable vs Teacher Teaching Schedule
+  const [scheduleType, setScheduleType] = useState<"student" | "teacher">("student");
+
+  // Student schedule state
   const [selectedGrade, setSelectedGrade] = useState("ม.2");
   const [customRoom, setCustomRoom] = useState("");
+
+  // Teacher schedule state
+  const [teachers, setTeachers] = useState<User[]>([]);
+  const [selectedTeacherId, setSelectedTeacherId] = useState("");
+  const [selectedTeacher, setSelectedTeacher] = useState<User | null>(null);
+
+  // Common timetable state
   const [selectedDay, setSelectedDay] = useState<DayOfWeek>("monday");
   const [viewMode, setViewMode] = useState<"daily" | "weekly">("daily");
   const [scheduleItems, setScheduleItems] = useState<ScheduleItem[]>([]);
@@ -50,12 +65,45 @@ export function AdminScheduleManager() {
 
   const activeGradeKey = customRoom.trim() || selectedGrade;
 
+  // Load teachers on mount
+  useEffect(() => {
+    async function loadTeachers() {
+      try {
+        const list = await getAllTeachers();
+        setTeachers(list);
+        if (list.length > 0 && !selectedTeacherId) {
+          setSelectedTeacherId(list[0].id);
+          setSelectedTeacher(list[0]);
+        }
+      } catch (err) {
+        console.warn("Error loading teachers for schedule manager:", err);
+      }
+    }
+    loadTeachers();
+  }, []);
+
+  // Sync selectedTeacher when selectedTeacherId changes
+  useEffect(() => {
+    const found = teachers.find((t) => t.id === selectedTeacherId);
+    if (found) setSelectedTeacher(found);
+  }, [selectedTeacherId, teachers]);
+
+  // Load timetable items based on scheduleType
   useEffect(() => {
     let isMounted = true;
     async function load() {
       setLoading(true);
       try {
-        const items = await getClassSchedule(activeGradeKey);
+        let items: ScheduleItem[];
+        if (scheduleType === "teacher") {
+          if (selectedTeacherId) {
+            items = await getTeacherSchedule(selectedTeacherId, selectedTeacher);
+          } else {
+            items = [];
+          }
+        } else {
+          items = await getClassSchedule(activeGradeKey);
+        }
         if (isMounted) setScheduleItems(items);
       } catch (err) {
         console.error("Load schedule in admin error:", err);
@@ -67,7 +115,7 @@ export function AdminScheduleManager() {
     return () => {
       isMounted = false;
     };
-  }, [activeGradeKey]);
+  }, [scheduleType, activeGradeKey, selectedTeacherId, selectedTeacher]);
 
   const currentDayItems = scheduleItems
     .filter((it) => it.day === selectedDay)
@@ -76,11 +124,21 @@ export function AdminScheduleManager() {
   async function handleSaveAll() {
     setSaving(true);
     try {
-      await saveClassSchedule(activeGradeKey, scheduleItems);
-      toast({
-        title: "บันทึกตารางเรียนสำเร็จ",
-        description: `ตารางเรียนของ ${activeGradeKey} ถูกบันทึกและอัปเดตเรียบร้อยแล้ว`,
-      });
+      if (scheduleType === "teacher") {
+        if (!selectedTeacherId) return;
+        const tName = selectedTeacher?.fullName || selectedTeacher?.displayName || "คุณครู";
+        await saveTeacherSchedule(selectedTeacherId, scheduleItems, tName);
+        toast({
+          title: "บันทึกตารางสอนสำเร็จ",
+          description: `ตารางสอนของคุณครู ${tName} ถูกบันทึกเรียบร้อยแล้ว`,
+        });
+      } else {
+        await saveClassSchedule(activeGradeKey, scheduleItems);
+        toast({
+          title: "บันทึกตารางเรียนสำเร็จ",
+          description: `ตารางเรียนของ ${activeGradeKey} ถูกบันทึกและอัปเดตเรียบร้อยแล้ว`,
+        });
+      }
     } catch (err) {
       toast({
         variant: "destructive",
@@ -93,20 +151,39 @@ export function AdminScheduleManager() {
   }
 
   async function handleResetDefault() {
-    if (!confirm(`คุณต้องการโหลดข้อมูลตารางเรียนมาตรฐานสำหรับ ${selectedGrade} หรือไม่? ข้อมูลเดิมจะถูกเขียนทับ`)) return;
-    const defaults = generateDefaultSchedule(selectedGrade);
-    setScheduleItems(defaults);
-    try {
-      await saveClassSchedule(activeGradeKey, defaults);
-      toast({
-        title: "โหลดตารางมาตรฐานสำเร็จ",
-        description: `โหลดข้อมูลตารางเรียนมาตรฐานระดับชั้น ${selectedGrade} เรียบร้อยแล้ว`,
-      });
-    } catch (err) {
-      toast({
-        variant: "destructive",
-        title: "โหลดตารางไม่สำเร็จ",
-      });
+    if (scheduleType === "teacher") {
+      const tName = selectedTeacher?.fullName || selectedTeacher?.displayName || "คุณครู";
+      if (!confirm(`คุณต้องการโหลดตารางสอนมาตรฐานสำหรับคุณครู ${tName} หรือไม่?`)) return;
+      const defaults = generateDefaultTeacherSchedule(selectedTeacher || { displayName: tName });
+      setScheduleItems(defaults);
+      try {
+        await saveTeacherSchedule(selectedTeacherId, defaults, tName);
+        toast({
+          title: "โหลดตารางสอนมาตรฐานสำเร็จ",
+          description: `โหลดข้อมูลตารางสอนมาตรฐานสำหรับ ${tName} เรียบร้อยแล้ว`,
+        });
+      } catch (err) {
+        toast({
+          variant: "destructive",
+          title: "รีเซ็ตไม่สำเร็จ",
+        });
+      }
+    } else {
+      if (!confirm(`คุณต้องการโหลดข้อมูลตารางเรียนมาตรฐานสำหรับ ${selectedGrade} หรือไม่? ข้อมูลเดิมจะถูกเขียนทับ`)) return;
+      const defaults = generateDefaultSchedule(selectedGrade);
+      setScheduleItems(defaults);
+      try {
+        await saveClassSchedule(activeGradeKey, defaults);
+        toast({
+          title: "โหลดตารางมาตรฐานสำเร็จ",
+          description: `โหลดข้อมูลตารางเรียนมาตรฐานระดับชั้น ${selectedGrade} เรียบร้อยแล้ว`,
+        });
+      } catch (err) {
+        toast({
+          variant: "destructive",
+          title: "รีเซ็ตไม่สำเร็จ",
+        });
+      }
     }
   }
 
@@ -136,22 +213,71 @@ export function AdminScheduleManager() {
     toast({ title: "ลบคาบเรียนออกจากตารางแล้ว" });
   }
 
+  const activeTargetName =
+    scheduleType === "teacher"
+      ? selectedTeacher?.fullName || selectedTeacher?.displayName || "คุณครู"
+      : activeGradeKey;
+
   return (
     <div className="space-y-6 animate-in fade-in">
+      {/* Schedule Type Mode Switcher */}
+      <div className="flex items-center gap-2 p-1.5 bg-slate-100 rounded-2xl border border-slate-200/80 w-fit">
+        <button
+          onClick={() => setScheduleType("student")}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+            scheduleType === "student"
+              ? "bg-white text-emerald-800 shadow-xs border border-slate-200"
+              : "text-slate-600 hover:text-slate-900"
+          }`}
+        >
+          <i className="fa-solid fa-graduation-cap text-emerald-600" />
+          <span>ตารางเรียนนักเรียน (ม.1 - ม.6)</span>
+        </button>
+
+        <button
+          onClick={() => setScheduleType("teacher")}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+            scheduleType === "teacher"
+              ? "bg-white text-amber-800 shadow-xs border border-slate-200"
+              : "text-slate-600 hover:text-slate-900"
+          }`}
+        >
+          <i className="fa-solid fa-chalkboard-user text-amber-600" />
+          <span>ตารางสอนครูผู้สอน (รายบุคคล)</span>
+          {teachers.length > 0 && (
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-100 text-amber-800">
+              {teachers.length} ท่าน
+            </span>
+          )}
+        </button>
+      </div>
+
       {/* Top Banner */}
       <div className="p-6 rounded-2xl bg-white border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-sm">
-              <i className="fa-solid fa-calendar-days" />
+            <span className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm ${
+              scheduleType === "teacher" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-700"
+            }`}>
+              <i className={`fa-solid ${scheduleType === "teacher" ? "fa-chalkboard-user" : "fa-calendar-days"}`} />
             </span>
-            <h2 className="text-lg font-bold text-slate-900">จัดการตารางเรียน (ม.1 - ม.6)</h2>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-              6 ระดับชั้น
+            <h2 className="text-lg font-bold text-slate-900">
+              {scheduleType === "teacher"
+                ? `จัดการตารางสอนครูผู้สอน: ${activeTargetName}`
+                : "จัดการตารางเรียนนักเรียน (ม.1 - ม.6)"}
+            </h2>
+            <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
+              scheduleType === "teacher"
+                ? "bg-amber-50 text-amber-800 border-amber-200"
+                : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+            }`}>
+              {scheduleType === "teacher" ? "ตารางสอนรายบุคคล" : "6 ระดับชั้น"}
             </span>
           </div>
           <p className="text-xs text-slate-500">
-            ระบบสร้างตารางเรียนมาตรฐานชั้น ม.1 ถึง ม.6 ไว้ให้เรียบร้อยแล้ว แอดมินสามารถเลือกชั้นปีเพื่อดู ปรับแต่ง เพิ่ม/แก้ไขวิชา หรือระบุเป็นห้องเฉพาะได้
+            {scheduleType === "teacher"
+              ? "แอดมินสามารถจัดคาบสอน ระบุห้องที่ครูต้องไปสอน (เช่น ม.2/1, ม.3/2) และเวลาเรียนให้คุณครูแต่ละท่านได้โดยตรง"
+              : "ระบบสร้างตารางเรียนมาตรฐานชั้น ม.1 ถึง ม.6 ไว้ให้เรียบร้อยแล้ว แอดมินสามารถเลือกชั้นปีเพื่อดู ปรับแต่ง เพิ่ม/แก้ไขวิชา หรือระบุเป็นห้องเฉพาะได้"}
           </p>
         </div>
 
@@ -159,85 +285,133 @@ export function AdminScheduleManager() {
           <button
             onClick={handleResetDefault}
             className="px-3.5 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer"
-            title="รีเซ็ตเป็นตารางมาตรฐานของชั้นปีนี้"
+            title="รีเซ็ตเป็นตารางมาตรฐาน"
           >
             <i className="fa-solid fa-arrow-rotate-left text-slate-500" />
-            <span>โหลดตารางมาตรฐาน {selectedGrade}</span>
+            <span>
+              {scheduleType === "teacher"
+                ? `โหลดตารางสอนมาตรฐาน (${activeTargetName})`
+                : `โหลดตารางมาตรฐาน ${selectedGrade}`}
+            </span>
           </button>
           <button
             onClick={handleSaveAll}
             disabled={saving}
-            className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
+            className={`px-4 py-2 rounded-xl text-white text-xs font-semibold shadow-xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-60 ${
+              scheduleType === "teacher"
+                ? "bg-amber-600 hover:bg-amber-700"
+                : "bg-emerald-600 hover:bg-emerald-700"
+            }`}
           >
             {saving ? <i className="fa-solid fa-circle-notch fa-spin" /> : <i className="fa-solid fa-cloud-arrow-up" />}
-            <span>บันทึกตารางเรียน ({activeGradeKey})</span>
+            <span>
+              {scheduleType === "teacher"
+                ? `บันทึกตารางสอน (${activeTargetName})`
+                : `บันทึกตารางเรียน (${activeGradeKey})`}
+            </span>
           </button>
         </div>
       </div>
 
-      {/* Grade Selector Tabs */}
-      <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-4">
-        <div>
-          <label className="block text-xs font-bold text-slate-700 mb-2 flex items-center gap-1.5">
-            <i className="fa-solid fa-graduation-cap text-emerald-600" />
-            เลือกระดับชั้นปี (ม.1 - ม.6) หรือพิมพ์ห้องเฉพาะ:
-          </label>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-            {GRADES.map((g) => {
-              const isSelected = selectedGrade === g.key && !customRoom.trim();
-              return (
-                <button
-                  key={g.key}
-                  onClick={() => {
-                    setSelectedGrade(g.key);
-                    setCustomRoom("");
-                  }}
-                  className={`p-3 rounded-xl border text-left transition cursor-pointer ${
-                    isSelected
-                      ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
-                      : "bg-slate-50 hover:bg-slate-100 text-slate-800 border-slate-200"
-                  }`}
-                >
-                  <div className="font-bold text-sm">{g.key}</div>
-                  <div className={`text-[10px] truncate mt-0.5 ${isSelected ? "text-emerald-100" : "text-slate-500"}`}>
-                    {g.sub}
-                  </div>
-                </button>
-              );
-            })}
+      {/* Target Selector Card */}
+      {scheduleType === "student" ? (
+        <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-2 flex items-center gap-1.5">
+              <i className="fa-solid fa-graduation-cap text-emerald-600" />
+              เลือกระดับชั้นปี (ม.1 - ม.6) หรือพิมพ์ห้องเฉพาะ:
+            </label>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+              {GRADES.map((g) => {
+                const isSelected = selectedGrade === g.key && !customRoom.trim();
+                return (
+                  <button
+                    key={g.key}
+                    onClick={() => {
+                      setSelectedGrade(g.key);
+                      setCustomRoom("");
+                    }}
+                    className={`p-3 rounded-xl border text-left transition cursor-pointer ${
+                      isSelected
+                        ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                        : "bg-slate-50 hover:bg-slate-100 text-slate-800 border-slate-200"
+                    }`}
+                  >
+                    <div className="font-bold text-sm">{g.key}</div>
+                    <div className={`text-[10px] truncate mt-0.5 ${isSelected ? "text-emerald-100" : "text-slate-500"}`}>
+                      {g.sub}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
 
-        {/* Custom Room Option */}
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-3 border-t border-slate-100">
-          <div className="text-xs text-slate-500 font-medium flex items-center gap-1.5">
-            <i className="fa-solid fa-door-open text-slate-400" />
-            หรือต้องการกำหนดตารางให้ห้องเฉพาะ (เช่น ม.2/1 หรือ ม.1/3):
+          {/* Custom Room Option */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-3 border-t border-slate-100">
+            <div className="text-xs text-slate-500 font-medium flex items-center gap-1.5">
+              <i className="fa-solid fa-door-open text-slate-400" />
+              หรือต้องการกำหนดตารางให้ห้องเฉพาะ (เช่น ม.2/1 หรือ ม.1/3):
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={customRoom}
+                onChange={(e) => setCustomRoom(e.target.value)}
+                placeholder="เช่น ม.2/1, ม.3/2"
+                className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs w-36 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-bold"
+              />
+              {customRoom && (
+                <button
+                  onClick={() => setCustomRoom("")}
+                  className="text-xs text-rose-500 hover:underline"
+                >
+                  ล้างค่า
+                </button>
+              )}
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={customRoom}
-              onChange={(e) => setCustomRoom(e.target.value)}
-              placeholder="เช่น ม.2/1 หรือ ม.4/1"
-              className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 min-w-[150px]"
-            />
-            {customRoom && (
-              <button
-                onClick={() => setCustomRoom("")}
-                className="text-xs text-slate-400 hover:text-slate-600"
-                title="ล้างค่าห้องเฉพาะ"
-              >
-                <i className="fa-solid fa-xmark" />
-              </button>
-            )}
-          </div>
-          <span className="text-xs font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 inline-flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            กำลังจัดการ: <strong>{activeGradeKey}</strong>
-          </span>
         </div>
-      </div>
+      ) : (
+        <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-3">
+          <label className="block text-xs font-bold text-slate-700 flex items-center gap-1.5">
+            <i className="fa-solid fa-user-tie text-amber-600" />
+            เลือกคุณครูผู้สอนที่ต้องการจัดการตารางสอน:
+          </label>
+
+          {teachers.length === 0 ? (
+            <p className="text-xs text-slate-400 py-3">ยังไม่มีข้อมูลคุณครูในระบบ</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
+              <div className="md:col-span-2">
+                <select
+                  value={selectedTeacherId}
+                  onChange={(e) => setSelectedTeacherId(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-900 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500/20 cursor-pointer"
+                >
+                  {teachers.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.fullName || t.displayName} {t.advisorRoom ? `(ครูที่ปรึกษา ${t.advisorRoom})` : ""} - {t.email}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedTeacher && (
+                <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
+                  <i className="fa-solid fa-id-card text-amber-600" />
+                  <div className="truncate">
+                    <span className="font-bold">{selectedTeacher.fullName || selectedTeacher.displayName}</span>
+                    <span className="text-slate-500 block text-[11px]">
+                      {selectedTeacher.advisorRoom ? `ที่ปรึกษา: ${selectedTeacher.advisorRoom}` : "ยังไม่ได้ระบุห้องที่ปรึกษา"}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Schedule Table & Day Controller */}
       <div className="p-6 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-5">

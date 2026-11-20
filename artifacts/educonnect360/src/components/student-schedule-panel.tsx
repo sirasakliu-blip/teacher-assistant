@@ -1,12 +1,22 @@
 import { useState, useEffect } from "react";
 import type { ScheduleItem, DayOfWeek, Class } from "@/types";
-import { getClassSchedule, saveClassSchedule, generateDefaultSchedule } from "@/lib/firestore";
+import {
+  getClassSchedule,
+  saveClassSchedule,
+  generateDefaultSchedule,
+  getTeacherSchedule,
+  saveTeacherSchedule,
+  generateDefaultTeacherSchedule,
+} from "@/lib/firestore";
 import { useToast } from "@/hooks/use-toast";
 
 interface StudentSchedulePanelProps {
   gradeLevel?: string | null;
   studentClasses?: Class[];
   readOnly?: boolean;
+  teacherId?: string;
+  teacherName?: string;
+  isTeacherTeachingSchedule?: boolean;
 }
 
 const DAY_LABELS: Record<DayOfWeek, { thai: string; short: string; color: string }> = {
@@ -59,7 +69,14 @@ function getPeriodStatus(item: ScheduleItem, currentDay: DayOfWeek): "ongoing" |
   return "upcoming";
 }
 
-export function StudentSchedulePanel({ gradeLevel, studentClasses = [], readOnly = false }: StudentSchedulePanelProps) {
+export function StudentSchedulePanel({
+  gradeLevel,
+  studentClasses = [],
+  readOnly = false,
+  teacherId,
+  teacherName,
+  isTeacherTeachingSchedule = false,
+}: StudentSchedulePanelProps) {
   const { toast } = useToast();
   const todayDay = getTodayDayOfWeek();
   const [selectedDay, setSelectedDay] = useState<DayOfWeek>(todayDay);
@@ -73,13 +90,19 @@ export function StudentSchedulePanel({ gradeLevel, studentClasses = [], readOnly
   const [saving, setSaving] = useState(false);
 
   const resolvedGrade = gradeLevel || (studentClasses.length > 0 ? studentClasses[0].gradeLevel : "ม.2/1");
+  const resolvedTeacherName = teacherName || "คุณครูผู้สอน";
 
   useEffect(() => {
     let isMounted = true;
     async function load() {
       setLoading(true);
       try {
-        const items = await getClassSchedule(resolvedGrade, studentClasses);
+        let items: ScheduleItem[];
+        if (isTeacherTeachingSchedule && teacherId) {
+          items = await getTeacherSchedule(teacherId, { displayName: resolvedTeacherName }, studentClasses);
+        } else {
+          items = await getClassSchedule(resolvedGrade, studentClasses);
+        }
         if (isMounted) setScheduleItems(items);
       } catch (err) {
         console.error("Load schedule error:", err);
@@ -91,7 +114,7 @@ export function StudentSchedulePanel({ gradeLevel, studentClasses = [], readOnly
     return () => {
       isMounted = false;
     };
-  }, [resolvedGrade, studentClasses]);
+  }, [resolvedGrade, studentClasses, isTeacherTeachingSchedule, teacherId, resolvedTeacherName]);
 
   const currentDayItems = scheduleItems
     .filter((item) => item.day === selectedDay)
@@ -112,9 +135,14 @@ export function StudentSchedulePanel({ gradeLevel, studentClasses = [], readOnly
       } else {
         updated = scheduleItems.map((it) => (it.id === editingItem.id ? editingItem : it));
       }
-      await saveClassSchedule(resolvedGrade, updated);
+
+      if (isTeacherTeachingSchedule && teacherId) {
+        await saveTeacherSchedule(teacherId, updated, resolvedTeacherName);
+      } else {
+        await saveClassSchedule(resolvedGrade, updated);
+      }
       setScheduleItems(updated);
-      toast({ title: "บันทึกตารางเรียนสำเร็จ" });
+      toast({ title: isTeacherTeachingSchedule ? "บันทึกตารางสอนสำเร็จ" : "บันทึกตารางเรียนสำเร็จ" });
       setEditingItem(null);
       setIsAddingNew(false);
     } catch (err) {
@@ -129,12 +157,16 @@ export function StudentSchedulePanel({ gradeLevel, studentClasses = [], readOnly
   }
 
   async function handleDeleteItem(itemId: string) {
-    if (!confirm("คุณต้องการลบคาบเรียนนี้ออกจากตารางใช่หรือไม่?")) return;
+    if (!confirm(isTeacherTeachingSchedule ? "คุณต้องการลบคาบสอนนี้ใช่หรือไม่?" : "คุณต้องการลบคาบเรียนนี้ใช่หรือไม่?")) return;
     try {
       const updated = scheduleItems.filter((it) => it.id !== itemId);
-      await saveClassSchedule(resolvedGrade, updated);
+      if (isTeacherTeachingSchedule && teacherId) {
+        await saveTeacherSchedule(teacherId, updated, resolvedTeacherName);
+      } else {
+        await saveClassSchedule(resolvedGrade, updated);
+      }
       setScheduleItems(updated);
-      toast({ title: "ลบคาบเรียนสำเร็จ" });
+      toast({ title: "ลบคาบสำเร็จ" });
     } catch (err) {
       toast({
         variant: "destructive",
@@ -144,12 +176,22 @@ export function StudentSchedulePanel({ gradeLevel, studentClasses = [], readOnly
   }
 
   async function handleResetDefault() {
-    if (!confirm("ต้องการรีเซ็ตตารางเรียนกลับเป็นตารางมาตรฐานของระดับชั้นนี้หรือไม่?")) return;
+    const confirmMsg = isTeacherTeachingSchedule
+      ? "ต้องการรีเซ็ตตารางสอนกลับเป็นค่ามาตรฐานของคุณครูท่านนี้หรือไม่?"
+      : "ต้องการรีเซ็ตตารางเรียนกลับเป็นตารางมาตรฐานของระดับชั้นนี้หรือไม่?";
+    if (!confirm(confirmMsg)) return;
+
     try {
-      const defaults = generateDefaultSchedule(resolvedGrade, studentClasses);
-      await saveClassSchedule(resolvedGrade, defaults);
+      let defaults: ScheduleItem[];
+      if (isTeacherTeachingSchedule && teacherId) {
+        defaults = generateDefaultTeacherSchedule({ displayName: resolvedTeacherName, advisorRoom: resolvedGrade }, studentClasses);
+        await saveTeacherSchedule(teacherId, defaults, resolvedTeacherName);
+      } else {
+        defaults = generateDefaultSchedule(resolvedGrade, studentClasses);
+        await saveClassSchedule(resolvedGrade, defaults);
+      }
       setScheduleItems(defaults);
-      toast({ title: "รีเซ็ตตารางเรียนสำเร็จ" });
+      toast({ title: "รีเซ็ตตารางสำเร็จ" });
     } catch (err) {
       toast({
         variant: "destructive",
@@ -164,17 +206,29 @@ export function StudentSchedulePanel({ gradeLevel, studentClasses = [], readOnly
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-border">
         <div>
           <div className="flex items-center gap-2.5 flex-wrap">
-            <span className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center text-lg">
-              <i className="fa-solid fa-calendar-days" />
+            <span className={`w-9 h-9 rounded-xl flex items-center justify-center text-lg ${
+              isTeacherTeachingSchedule ? "bg-amber-500/10 text-amber-600" : "bg-primary/10 text-primary"
+            }`}>
+              <i className={`fa-solid ${isTeacherTeachingSchedule ? "fa-chalkboard-user" : "fa-calendar-days"}`} />
             </span>
-            <h2 className="text-xl font-bold text-foreground">ตารางเรียนประจำวัน</h2>
-            <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1.5 shadow-xs">
-              <i className="fa-solid fa-door-open text-emerald-600" />
-              ห้อง / ชั้น: {resolvedGrade}
+            <h2 className="text-xl font-bold text-foreground">
+              {isTeacherTeachingSchedule ? `ตารางสอนของคุณครู (${resolvedTeacherName})` : "ตารางเรียนประจำวัน"}
+            </h2>
+            <span className={`px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5 shadow-xs ${
+              isTeacherTeachingSchedule
+                ? "bg-amber-50 text-amber-900 border-amber-200"
+                : "bg-emerald-50 text-emerald-800 border-emerald-200"
+            }`}>
+              <i className={`fa-solid ${isTeacherTeachingSchedule ? "fa-user-tie text-amber-600" : "fa-door-open text-emerald-600"}`} />
+              {isTeacherTeachingSchedule ? `ครูผู้สอน: ${resolvedTeacherName}` : `ห้อง / ชั้น: ${resolvedGrade}`}
             </span>
           </div>
           <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-2">
-            <span>ตารางเรียนและคาบสอนสำหรับนักเรียนชั้น {resolvedGrade}</span>
+            <span>
+              {isTeacherTeachingSchedule
+                ? `ตารางสอนและห้องปฏิบัติการที่ต้องเข้าสอนประจำสัปดาห์ของคุณครู ${resolvedTeacherName}`
+                : `ตารางเรียนและคาบสอนสำหรับนักเรียนชั้น ${resolvedGrade}`}
+            </span>
             {isToday(selectedDay) && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800 animate-pulse">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />

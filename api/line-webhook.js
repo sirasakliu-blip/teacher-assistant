@@ -698,6 +698,183 @@ async function handler(req, res) {
           }
         }
 
+        // 0. Richmenu / Quick action: การเข้าเรียน & แจ้งเตือนขาดเรียน
+        if (/^(การเข้าเรียน|เช็คชื่อ|เช็คชื่อเข้าเรียน|ประวัติการเรียน|ขาดเรียน|มาเรียน|attendance)$/i.test(text)) {
+          const linked = userId ? await firestoreGetDoc("parent_line_links", userId) : null;
+          const targetUrl = `${WEB_BASE_URL}/parent-liff?tab=attendance&source=richmenu`;
+
+          if (linked && linked.studentUid) {
+            const summary = await firestoreGetDoc("student_summaries", linked.studentUid);
+            const todayStatus = summary?.todayAttendance?.status || "none";
+            const isAbsent = todayStatus === "absent";
+            const statusLabel =
+              todayStatus === "present"
+                ? "🟢 วันนี้: มาเรียนปกติ"
+                : todayStatus === "late"
+                ? "🟡 วันนี้: มาสาย"
+                : todayStatus === "excused"
+                ? "🔵 วันนี้: ลา (มีใบลา)"
+                : todayStatus === "absent"
+                ? "🔴 วันนี้: ขาดเรียน / ไม่เข้าเรียน"
+                : "⚪ ยังไม่มีข้อมูลเช็คชื่อวันนี้";
+
+            await sendLineReply(replyToken, [
+              {
+                type: "flex",
+                altText: isAbsent
+                  ? `🚨 แจ้งเตือน: ${linked.studentName} ขาดเรียนวันนี้`
+                  : `รายงานการเข้าเรียนของ ${linked.studentName}`,
+                contents: {
+                  type: "bubble",
+                  header: {
+                    type: "box",
+                    layout: "vertical",
+                    backgroundColor: isAbsent ? "#e11d48" : "#059669",
+                    paddingAll: "16px",
+                    contents: [
+                      {
+                        type: "text",
+                        text: isAbsent ? "🚨 แจ้งเตือนการเข้าเรียน" : "📋 รายงานการเข้าเรียน",
+                        color: "#ffffff",
+                        weight: "bold",
+                        size: "lg"
+                      },
+                      {
+                        type: "text",
+                        text: `นักเรียน: ${linked.studentName} (${linked.studentId || ""})`,
+                        color: isAbsent ? "#fecdd3" : "#a7f3d0",
+                        size: "xs",
+                        margin: "xs"
+                      }
+                    ]
+                  },
+                  body: {
+                    type: "box",
+                    layout: "vertical",
+                    paddingAll: "16px",
+                    spacing: "md",
+                    contents: [
+                      {
+                        type: "text",
+                        text: statusLabel,
+                        weight: "bold",
+                        size: "md",
+                        color: isAbsent ? "#e11d48" : "#059669"
+                      },
+                      {
+                        type: "box",
+                        layout: "horizontal",
+                        contents: [
+                          { type: "text", text: "มาเรียนสะสม:", size: "xs", color: "#64748b", flex: 5 },
+                          {
+                            type: "text",
+                            text: `${summary?.attendanceStats?.present || 0} ครั้ง (${summary?.attendanceStats?.rate || 100}%)`,
+                            size: "xs",
+                            weight: "bold",
+                            color: "#0f172a",
+                            flex: 5
+                          }
+                        ]
+                      },
+                      {
+                        type: "box",
+                        layout: "horizontal",
+                        contents: [
+                          { type: "text", text: "ขาดเรียนสะสม:", size: "xs", color: "#64748b", flex: 5 },
+                          {
+                            type: "text",
+                            text: `${summary?.attendanceStats?.absent || 0} ครั้ง`,
+                            size: "xs",
+                            weight: "bold",
+                            color: (summary?.attendanceStats?.absent || 0) > 0 ? "#e11d48" : "#0f172a",
+                            flex: 5
+                          }
+                        ]
+                      },
+                      {
+                        type: "text",
+                        text: "ผู้ปกครองสามารถกดปุ่มด้านล่างเพื่อตรวจสอบการเช็คชื่อแยกรายวิชาและประวัติย้อนหลังทั้งหมดได้ทันทีครับ",
+                        size: "xs",
+                        color: "#475569",
+                        wrap: true
+                      }
+                    ]
+                  },
+                  footer: {
+                    type: "box",
+                    layout: "vertical",
+                    paddingAll: "12px",
+                    contents: [
+                      {
+                        type: "button",
+                        style: "primary",
+                        color: isAbsent ? "#e11d48" : "#059669",
+                        action: {
+                          type: "uri",
+                          label: "📊 ดูประวัติและรายวิชาทั้งหมด",
+                          uri: targetUrl
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            ]);
+            continue;
+          } else {
+            await sendLineReply(replyToken, [
+              {
+                type: "flex",
+                altText: "ตรวจสอบการเข้าเรียน",
+                contents: {
+                  type: "bubble",
+                  header: {
+                    type: "box",
+                    layout: "vertical",
+                    backgroundColor: "#059669",
+                    paddingAll: "16px",
+                    contents: [
+                      { type: "text", text: "📋 รายงานการเข้าเรียน", color: "#ffffff", weight: "bold", size: "lg" }
+                    ]
+                  },
+                  body: {
+                    type: "box",
+                    layout: "vertical",
+                    paddingAll: "16px",
+                    contents: [
+                      {
+                        type: "text",
+                        text: "ท่านสามารถตรวจสอบสถานะการเข้าเรียนและประวัติการเช็คชื่อได้ผ่านระบบสมุดพกออนไลน์ หรือพิมพ์ชื่อจริง/รหัสนักเรียนเพื่อเชื่อมต่อข้อมูลครับ",
+                        wrap: true,
+                        size: "sm",
+                        color: "#334155"
+                      }
+                    ]
+                  },
+                  footer: {
+                    type: "box",
+                    layout: "vertical",
+                    paddingAll: "12px",
+                    contents: [
+                      {
+                        type: "button",
+                        style: "primary",
+                        color: "#059669",
+                        action: {
+                          type: "uri",
+                          label: "📊 เปิดดูประวัติการเข้าเรียน",
+                          uri: targetUrl
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            ]);
+            continue;
+          }
+        }
+
         // 1. Richmenu / Quick action: การบ้าน & งานค้าง
         if (/^(การบ้าน|งานค้าง|งานที่มอบหมาย|เช็คการบ้าน|homework)$/i.test(text)) {
           const linked = userId ? await firestoreGetDoc("parent_line_links", userId) : null;

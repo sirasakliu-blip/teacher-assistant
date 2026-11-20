@@ -21,6 +21,7 @@ export default function TeacherHome() {
   const [showCreateClass, setShowCreateClass] = useState(false);
   const [showContactModal, setShowContactModal] = useState(false);
   const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
+  const [scheduleViewTab, setScheduleViewTab] = useState<"teaching" | "advisor">("teaching");
 
   const advisorRoom = profile?.advisorRoom || profile?.gradeLevel || "ม.2/1";
 
@@ -102,24 +103,34 @@ export default function TeacherHome() {
           </div>
         </div>
 
-        {/* Advisor Student Schedule Section */}
-        <div className="mb-10 animate-fade-in-up">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-            <div>
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <span className="w-8 h-8 rounded-xl bg-teal-500/10 text-teal-600 flex items-center justify-center text-sm font-bold">
-                  <i className="fa-solid fa-calendar-days" />
-                </span>
-                <h2 className="text-xl font-bold text-foreground">
-                  ตารางเรียนนักเรียนห้องที่ปรึกษา ({advisorRoom})
-                </h2>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-teal-50 text-teal-800 border border-teal-200">
-                  ครูที่ปรึกษา
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                ตารางเรียนประจำวันของนักเรียนในความดูแลชั้น {advisorRoom} &middot; ตรวจสอบคาบเรียน ครูผู้สอน และห้องเรียน
-              </p>
+        {/* Teacher Teaching Schedule & Advisor Student Schedule Section */}
+        <div className="mb-10 animate-fade-in-up space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            {/* Tab switch between Teacher Teaching Timetable and Advisor Student Timetable */}
+            <div className="flex items-center gap-2 p-1.5 bg-muted rounded-2xl border border-border w-fit">
+              <button
+                onClick={() => setScheduleViewTab("teaching")}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+                  scheduleViewTab === "teaching"
+                    ? "bg-card text-foreground shadow-xs border border-border"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <i className="fa-solid fa-chalkboard-user text-amber-500" />
+                <span>ตารางสอนของฉัน (ตารางสอนครู)</span>
+              </button>
+
+              <button
+                onClick={() => setScheduleViewTab("advisor")}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+                  scheduleViewTab === "advisor"
+                    ? "bg-card text-foreground shadow-xs border border-border"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <i className="fa-solid fa-graduation-cap text-teal-600" />
+                <span>ตารางเรียนห้องที่ปรึกษา ({advisorRoom})</span>
+              </button>
             </div>
 
             <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
@@ -141,10 +152,19 @@ export default function TeacherHome() {
             </div>
           </div>
 
-          <StudentSchedulePanel
-            gradeLevel={advisorRoom}
-            studentClasses={classes}
-          />
+          {scheduleViewTab === "teaching" ? (
+            <StudentSchedulePanel
+              teacherId={profile?.id || profile?.uid}
+              teacherName={profile?.displayName || profile?.fullName}
+              studentClasses={classes}
+              isTeacherTeachingSchedule={true}
+            />
+          ) : (
+            <StudentSchedulePanel
+              gradeLevel={advisorRoom}
+              studentClasses={classes}
+            />
+          )}
         </div>
 
         {/* Classes Section Header */}
