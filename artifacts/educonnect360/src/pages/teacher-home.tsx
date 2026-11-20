@@ -1,19 +1,18 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { createClass, getClassesForTeacher } from "@/lib/firestore";
-import { CLASS_COVERS, coverGradient } from "@/lib/covers";
+import { getClassesForTeacher } from "@/lib/firestore";
+import { coverGradient } from "@/lib/covers";
 import { TeacherNav } from "@/components/teacher-nav";
 import { CreateStudentDialog } from "@/components/create-student-dialog";
-import type { Class, ClassCover } from "@/types";
+import type { Class } from "@/types";
 
 export default function TeacherHome() {
   const { profile } = useAuth();
   const { toast } = useToast();
   const [classes, setClasses] = useState<Class[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showCreate, setShowCreate] = useState(false);
   const [showAddStudent, setShowAddStudent] = useState(false);
 
   async function refresh() {
@@ -46,25 +45,31 @@ export default function TeacherHome() {
       <TeacherNav />
 
       <main className="relative z-10 max-w-6xl mx-auto px-6 md:px-10 py-10">
-        <div className="flex items-center justify-between mb-8 animate-fade-in-up">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8 animate-fade-in-up">
           <div>
-            <h1 className="text-3xl font-extrabold text-foreground">ห้องเรียนของฉัน</h1>
-            <p className="text-muted-foreground mt-1">
-              จัดการห้องเรียนและเช็คชื่อนักเรียนแบบเรียลไทม์
+            <div className="flex items-center gap-2 mb-1">
+              <h1 className="text-3xl font-extrabold text-foreground">ห้องเรียนของฉัน</h1>
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                จัดสรรตามชั้นเรียน
+              </span>
+            </div>
+            <p className="text-muted-foreground text-sm">
+              ห้องเรียนและรายชื่อนักเรียนจัดสรรโดยฝ่ายวิชาการ/ทะเบียน (นำเข้าจากไฟล์ Excel)
             </p>
           </div>
           <div className="flex items-center gap-2.5">
             <button
-              onClick={() => setShowAddStudent(true)}
-              className="px-4 py-3 rounded-xl border border-primary/30 bg-primary/10 hover:bg-primary/20 text-primary font-semibold text-sm transition flex items-center gap-2"
+              onClick={refresh}
+              className="px-3.5 py-2.5 rounded-xl border border-border bg-card hover:bg-muted text-foreground font-semibold text-xs transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+              title="รีเฟรชข้อมูลห้องเรียน"
             >
-              <i className="fa-solid fa-user-plus" /> เพิ่มบัญชีนักเรียน
+              <i className="fa-solid fa-arrows-rotate text-primary" /> รีเฟรช
             </button>
             <button
-              onClick={() => setShowCreate(true)}
-              className="px-5 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-all duration-300 shadow-lg shadow-primary/25 hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-2"
+              onClick={() => setShowAddStudent(true)}
+              className="px-4 py-2.5 rounded-xl border border-primary/30 bg-primary/10 hover:bg-primary/20 text-primary font-semibold text-xs transition flex items-center gap-2 shadow-xs cursor-pointer"
             >
-              <i className="fa-solid fa-plus" /> สร้างห้องเรียน
+              <i className="fa-solid fa-user-plus" /> เพิ่มบัญชีนักเรียน
             </button>
           </div>
         </div>
@@ -75,16 +80,18 @@ export default function TeacherHome() {
           </div>
         ) : classes.length === 0 ? (
           <div className="glass-panel rounded-3xl p-16 text-center animate-fade-in-up">
-            <i className="fa-solid fa-chalkboard text-4xl text-primary/50 mb-4" />
-            <h3 className="text-xl font-bold text-foreground mb-2">ยังไม่มีห้องเรียน</h3>
-            <p className="text-muted-foreground mb-6">
-              เริ่มต้นด้วยการสร้างห้องเรียนแรกของคุณ
+            <div className="w-16 h-16 rounded-3xl bg-primary/10 text-primary flex items-center justify-center text-3xl mx-auto mb-4">
+              <i className="fa-solid fa-chalkboard" />
+            </div>
+            <h3 className="text-xl font-bold text-foreground mb-2">ยังไม่มีห้องเรียนในระบบ</h3>
+            <p className="text-muted-foreground text-sm max-w-md mx-auto mb-4">
+              ห้องเรียนจะถูกสร้างและจัดสรรตามชั้นเรียนโดยอัตโนมัติ เมื่อผู้ดูแลระบบ (Admin) นำเข้าไฟล์ Excel นักเรียน
             </p>
             <button
-              onClick={() => setShowCreate(true)}
-              className="px-6 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-all"
+              onClick={refresh}
+              className="px-5 py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-xs hover:bg-primary/90 transition-all cursor-pointer inline-flex items-center gap-2"
             >
-              สร้างห้องเรียน
+              <i className="fa-solid fa-arrows-rotate" /> ตรวจสอบห้องเรียนอีกครั้ง
             </button>
           </div>
         ) : (
@@ -93,23 +100,32 @@ export default function TeacherHome() {
               <Link
                 key={cls.id}
                 href={`/teacher/classes/${cls.id}`}
-                className="glass-panel rounded-3xl overflow-hidden group hover:-translate-y-1.5 transition-all duration-500 hover:shadow-2xl hover:shadow-primary/10 animate-fade-in-up"
+                className="glass-panel rounded-3xl overflow-hidden group hover:-translate-y-1.5 transition-all duration-500 hover:shadow-2xl hover:shadow-primary/10 animate-fade-in-up block"
                 style={{ animationDelay: `${idx * 80}ms`, animationFillMode: "both" } as React.CSSProperties}
               >
                 <div className={`h-24 w-full bg-gradient-to-br ${coverGradient(cls.cover)} relative`}>
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <i className="fa-solid fa-book text-3xl text-white/90" />
+                    <i className="fa-solid fa-graduation-cap text-3xl text-white/30 group-hover:scale-110 transition-transform duration-500" />
+                  </div>
+                  <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-black/20 backdrop-blur-md text-white text-[11px] font-mono font-medium">
+                    {cls.code}
                   </div>
                 </div>
+
                 <div className="p-6">
-                  <h3 className="text-lg font-bold text-foreground mb-1">{cls.name}</h3>
-                  <p className="text-sm text-muted-foreground mb-4">{cls.gradeLevel}</p>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="flex items-center gap-1.5 text-muted-foreground">
-                      <i className="fa-solid fa-users text-primary/70" /> {cls.studentIds.length} คน
+                  <div className="text-xs font-semibold text-primary mb-1">
+                    {cls.gradeLevel || "ห้องเรียนรวม"}
+                  </div>
+                  <h3 className="text-lg font-bold text-foreground group-hover:text-primary transition-colors mb-2 truncate">
+                    {cls.name}
+                  </h3>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground pt-4 border-t border-border/50">
+                    <span className="flex items-center gap-1.5">
+                      <i className="fa-solid fa-users" />
+                      {cls.studentIds?.length || 0} คน
                     </span>
-                    <span className="font-mono font-bold text-primary tracking-widest">
-                      {cls.joinCode}
+                    <span className="font-semibold text-primary flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                      จัดการห้องเรียน <i className="fa-solid fa-arrow-right text-[10px]" />
                     </span>
                   </div>
                 </div>
@@ -119,126 +135,11 @@ export default function TeacherHome() {
         )}
       </main>
 
-      {showCreate && (
-        <CreateClassModal
-          teacherId={profile?.id ?? ""}
-          teacherName={profile?.displayName ?? ""}
-          onClose={() => setShowCreate(false)}
-          onCreated={() => {
-            setShowCreate(false);
-            refresh();
-          }}
-        />
-      )}
-
       <CreateStudentDialog
         open={showAddStudent}
         onClose={() => setShowAddStudent(false)}
-        onSuccess={() => refresh()}
+        onSuccess={refresh}
       />
-    </div>
-  );
-}
-
-function CreateClassModal({
-  teacherId,
-  teacherName,
-  onClose,
-  onCreated,
-}: {
-  teacherId: string;
-  teacherName: string;
-  onClose: () => void;
-  onCreated: () => void;
-}) {
-  const { toast } = useToast();
-  const [name, setName] = useState("");
-  const [gradeLevel, setGradeLevel] = useState("");
-  const [cover, setCover] = useState<ClassCover>("emerald");
-  const [submitting, setSubmitting] = useState(false);
-
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    setSubmitting(true);
-    try {
-      await createClass({ name, gradeLevel, cover, teacherId, teacherName });
-      toast({ title: "สร้างห้องเรียนสำเร็จ" });
-      onCreated();
-    } catch (err) {
-      toast({
-        variant: "destructive",
-        title: "สร้างห้องเรียนไม่สำเร็จ",
-        description: err instanceof Error ? err.message : undefined,
-      });
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm animate-fade-in-up">
-      <div className="glass-panel rounded-3xl p-8 w-full max-w-lg bg-card/95">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-foreground">สร้างห้องเรียนใหม่</h2>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors"
-          >
-            <i className="fa-solid fa-xmark" />
-          </button>
-        </div>
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div>
-            <label className="block text-sm font-semibold text-foreground mb-2">
-              ชื่อวิชา
-            </label>
-            <input
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="เช่น คณิตศาสตร์พื้นฐาน"
-              className="w-full px-4 py-3 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-ring text-foreground"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-foreground mb-2">
-              ระดับชั้น
-            </label>
-            <input
-              required
-              value={gradeLevel}
-              onChange={(e) => setGradeLevel(e.target.value)}
-              placeholder="เช่น มัธยมศึกษาปีที่ 3"
-              className="w-full px-4 py-3 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-ring text-foreground"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-foreground mb-2">
-              รูปปก
-            </label>
-            <div className="grid grid-cols-6 gap-2">
-              {CLASS_COVERS.map((c) => (
-                <button
-                  type="button"
-                  key={c.value}
-                  onClick={() => setCover(c.value)}
-                  className={`h-12 rounded-xl bg-gradient-to-br ${c.gradient} transition-all ${
-                    cover === c.value ? "ring-2 ring-offset-2 ring-primary ring-offset-card scale-105" : "opacity-80 hover:opacity-100"
-                  }`}
-                  title={c.label}
-                />
-              ))}
-            </div>
-          </div>
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full py-3.5 rounded-xl bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition-all shadow-lg shadow-primary/25 disabled:opacity-60 flex items-center justify-center gap-2"
-          >
-            {submitting ? <i className="fa-solid fa-circle-notch fa-spin" /> : "สร้างห้องเรียน"}
-          </button>
-        </form>
-      </div>
     </div>
   );
 }

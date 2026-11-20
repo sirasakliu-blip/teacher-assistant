@@ -243,10 +243,14 @@ export async function createClass(input: {
 
 export async function getClassesForTeacher(teacherId: string): Promise<Class[]> {
   const database = requireDb();
-  const snaps = await getDocs(
-    query(collection(database, "classes"), where("teacherId", "==", teacherId)),
-  );
-  return snaps.docs.map((d) => mapClassDoc(d.id, d.data()));
+  const [teacherSnap, allSnap] = await Promise.all([
+    getDocs(query(collection(database, "classes"), where("teacherId", "==", teacherId))),
+    getDocs(query(collection(database, "classes"), limit(100))),
+  ]);
+  const map = new Map<string, Class>();
+  allSnap.docs.forEach((d) => map.set(d.id, mapClassDoc(d.id, d.data())));
+  teacherSnap.docs.forEach((d) => map.set(d.id, mapClassDoc(d.id, d.data())));
+  return Array.from(map.values());
 }
 
 export async function getClassesForStudent(studentId: string): Promise<Class[]> {
@@ -631,6 +635,62 @@ export async function gradeSubmission(submissionId: string, score: number): Prom
   } catch (err) {
     console.error("Failed to trigger syncStudentSummary after grading:", err);
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Direct Student Score Grading & Bulk Excel Score Records            */
+/* ------------------------------------------------------------------ */
+
+export async function recordOrUpdateStudentScore(
+  assignmentId: string,
+  studentId: string,
+  score: number,
+): Promise<void> {
+  const database = requireDb();
+  const q = query(
+    collection(database, "submissions"),
+    where("assignmentId", "==", assignmentId),
+    where("studentId", "==", studentId),
+  );
+  const snap = await getDocs(q);
+  if (!snap.empty) {
+    const docId = snap.docs[0].id;
+    await updateDoc(doc(database, "submissions", docId), {
+      score,
+      gradedAt: serverTimestamp(),
+    });
+  } else {
+    await addDoc(collection(database, "submissions"), {
+      assignmentId,
+      studentId,
+      content: "คะแนนบันทึกโดยตรงจากครูผู้สอน",
+      fileName: null,
+      fileUrl: null,
+      submittedAt: serverTimestamp(),
+      score,
+      gradedAt: serverTimestamp(),
+    });
+  }
+  syncStudentSummary(studentId).catch((err) =>
+    console.error("Error syncing student summary after grading:", err),
+  );
+}
+
+export async function bulkRecordScores(
+  assignmentId: string,
+  scores: Array<{ studentId: string; score: number }>,
+): Promise<{ successCount: number; errorCount: number }> {
+  let successCount = 0;
+  let errorCount = 0;
+  for (const item of scores) {
+    try {
+      await recordOrUpdateStudentScore(assignmentId, item.studentId, item.score);
+      successCount++;
+    } catch {
+      errorCount++;
+    }
+  }
+  return { successCount, errorCount };
 }
 
 /* ------------------------------------------------------------------ */
@@ -2156,6 +2216,158 @@ export async function getStudentHomeworkDetailed(studentUid: string) {
   return {
     classes,
     homeworkList: homeworkList.sort((a, b) => b.dueDate.localeCompare(a.dueDate)),
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Bulk Import Students & Auto Class Setup from Excel                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Normalizes grade level string:
+ * - If "ม.1/2" -> "ม.1/2"
+ * - If "ม.1" -> "ม.1/1" (If there's only one room or no room specified, default to room 1)
+ * - If "ป.4" -> "ป.4/1"
+ */
+export function normalizeGradeRoom(raw?: string): string {
+  if (!raw || !raw.trim()) return "ม.1/1";
+  const clean = raw.trim();
+  if (clean.includes("/")) {
+    return clean;
+  }
+  return `${clean}/1`;
+}
+
+export async function bulkImportStudentsAndClasses(
+  studentsData: Array<{
+    studentId: string;
+    fullName: string;
+    gradeLevel?: string;
+  }>,
+  adminUid: string,
+): Promise<{
+  totalStudents: number;
+  createdStudents: number;
+  totalClasses: number;
+  classList: string[];
+}> {
+  const database = requireDb();
+  const roomsMap = new Map<string, Array<{ studentId: string; fullName: string; uid: string }>>();
+  let createdStudents = 0;
+
+  for (const item of studentsData) {
+    const cleanId = (item.studentId || "").toString().trim().replace(/\s+/g, "");
+    const cleanName = (item.fullName || "").trim();
+    if (!cleanId || !cleanName) continue;
+
+    const normalizedRoom = normalizeGradeRoom(item.gradeLevel);
+    const syntheticEmail = `${cleanId}@student.school.local`;
+    const normalized = normalizeThaiName(cleanName);
+
+    const existingSnap = await getDocs(
+      query(collection(database, "users"), where("studentId", "==", cleanId)),
+    );
+
+    let uid = "";
+    if (!existingSnap.empty) {
+      uid = existingSnap.docs[0].id;
+      await updateDoc(doc(database, "users", uid), {
+        gradeLevel: normalizedRoom,
+        fullName: cleanName,
+        displayName: cleanName,
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      uid = `std_${cleanId}`;
+      const parentViewToken = generateParentViewToken();
+
+      await setDoc(doc(database, "parent_view_tokens", parentViewToken), {
+        token: parentViewToken,
+        studentUid: uid,
+        studentId: cleanId,
+        studentName: cleanName,
+        isActive: true,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      await setDoc(doc(database, "users", uid), {
+        uid,
+        email: syntheticEmail,
+        displayName: cleanName,
+        fullName: cleanName,
+        searchName: normalized.searchName,
+        normalizedFullName: normalized.normalizedFullName,
+        role: "student",
+        studentId: cleanId,
+        gradeLevel: normalizedRoom,
+        parentViewToken,
+        linkedStudentIds: [],
+        photoURL: null,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      syncStudentSummary(uid).catch((err) =>
+        console.error("Error creating student summary:", err),
+      );
+
+      createdStudents++;
+    }
+
+    if (!roomsMap.has(normalizedRoom)) {
+      roomsMap.set(normalizedRoom, []);
+    }
+    roomsMap.get(normalizedRoom)!.push({
+      studentId: cleanId,
+      fullName: cleanName,
+      uid,
+    });
+  }
+
+  const classList: string[] = [];
+  const covers: ClassCover[] = ["emerald", "teal", "cyan", "blue", "indigo", "violet"];
+  let coverIdx = 0;
+
+  for (const [room, studentsInRoom] of roomsMap.entries()) {
+    classList.push(room);
+    const studentUids = studentsInRoom.map((s) => s.uid);
+
+    const classQ = query(
+      collection(database, "classes"),
+      where("gradeLevel", "==", room),
+    );
+    const classSnap = await getDocs(classQ);
+
+    if (!classSnap.empty) {
+      const classDoc = classSnap.docs[0];
+      const existingStudentIds: string[] = classDoc.data().studentIds || [];
+      const mergedIds = Array.from(new Set([...existingStudentIds, ...studentUids]));
+      await updateDoc(doc(database, "classes", classDoc.id), {
+        studentIds: mergedIds,
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      const randomCode = `CLS-${room.replace(/[^a-zA-Z0-9ก-๙]/g, "")}-${Math.floor(10 + Math.random() * 90)}`;
+      await addDoc(collection(database, "classes"), {
+        name: `ห้องเรียน ${room}`,
+        gradeLevel: room,
+        teacherId: adminUid || "school_admin",
+        studentIds: studentUids,
+        code: randomCode,
+        cover: covers[coverIdx % covers.length],
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      coverIdx++;
+    }
+  }
+
+  return {
+    totalStudents: studentsData.length,
+    createdStudents,
+    totalClasses: roomsMap.size,
+    classList,
   };
 }
 

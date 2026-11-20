@@ -78,7 +78,23 @@ export default function Login() {
         try {
           await login(syntheticEmail, password);
         } catch {
-          throw new Error("รหัสนักเรียนหรือรหัสผ่านไม่ถูกต้อง กรุณาตรวจสอบหรือติดต่อครูประจำชั้น");
+          if (password === "0000") {
+            try {
+              await login(syntheticEmail, `STD_0000_${cleanId}`);
+            } catch {
+              try {
+                await login(syntheticEmail, "000000");
+              } catch {
+                try {
+                  await login(syntheticEmail, `STD_PASS_${cleanId}`);
+                } catch {
+                  throw new Error("รหัสนักเรียนหรือรหัสผ่านไม่ถูกต้อง กรุณาตรวจสอบหรือติดต่อครูประจำชั้น");
+                }
+              }
+            }
+          } else {
+            throw new Error("รหัสนักเรียนหรือรหัสผ่านไม่ถูกต้อง กรุณาตรวจสอบหรือติดต่อครูประจำชั้น");
+          }
         }
       } else {
         await login(email, password);

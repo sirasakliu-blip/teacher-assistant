@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -15,14 +15,17 @@ import {
   getAllParentViewTokens,
   toggleParentTokenStatus,
   resetParentViewToken,
+  bulkImportStudentsAndClasses,
+  normalizeGradeRoom,
 } from "@/lib/firestore";
+import { parseExcelOrCsv, exportToExcel } from "@/lib/excel-helper";
 import { CreateStudentDialog } from "@/components/create-student-dialog";
 
 export default function AdminDashboard() {
   const { profile, firebaseUser } = useAuth();
   const { toast } = useToast();
 
-  const [activeTab, setActiveTab] = useState<"invites" | "whitelist" | "users">("invites");
+  const [activeTab, setActiveTab] = useState<"invites" | "whitelist" | "users" | "import-students">("invites");
 
   // Tab 1: Teacher Invites state
   const [invites, setInvites] = useState<TeacherInvite[]>([]);
@@ -34,6 +37,24 @@ export default function AdminDashboard() {
   const [inviteSearch, setInviteSearch] = useState("");
   const [inviteFilter, setInviteFilter] = useState<"all" | "unused" | "used">("all");
   const [deletingCode, setDeletingCode] = useState<string | null>(null);
+
+  // Excel Teacher Batch State
+  const fileInputTeacherRef = useRef<HTMLInputElement>(null);
+  const [teacherExcelRows, setTeacherExcelRows] = useState<any[]>([]);
+  const [teacherExcelFileName, setTeacherExcelFileName] = useState("");
+  const [generatingTeacherCodes, setGeneratingTeacherCodes] = useState(false);
+
+  // Excel Student & Class Setup State
+  const fileInputStudentRef = useRef<HTMLInputElement>(null);
+  const [studentExcelRows, setStudentExcelRows] = useState<any[]>([]);
+  const [studentExcelFileName, setStudentExcelFileName] = useState("");
+  const [importingStudents, setImportingStudents] = useState(false);
+  const [studentImportResult, setStudentImportResult] = useState<{
+    totalStudents: number;
+    createdStudents: number;
+    totalClasses: number;
+    classList: string[];
+  } | null>(null);
 
   // Tab 2: Admin Whitelist state
   const [whitelist, setWhitelist] = useState<AdminWhitelist[]>([]);
@@ -171,6 +192,188 @@ export default function AdminDashboard() {
     } finally {
       setDeletingCode(null);
     }
+  }
+
+  /* ---------------- Teacher Excel Batch Invite Handlers ---------------- */
+  async function handleTeacherExcelUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setTeacherExcelFileName(file.name);
+    try {
+      const rows = await parseExcelOrCsv(file);
+      if (!rows || rows.length === 0) {
+        throw new Error("ไม่พบข้อมูลในไฟล์ Excel ที่อัปโหลด");
+      }
+      setTeacherExcelRows(rows);
+      toast({
+        title: "อ่านไฟล์ Excel สำเร็จ",
+        description: `พบรายชื่อครูทั้งหมด ${rows.length} รายการ`,
+      });
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "อ่านไฟล์ไม่สำเร็จ",
+        description: err instanceof Error ? err.message : "กรุณาตรวจสอบไฟล์",
+      });
+    }
+  }
+
+  async function handleGenerateTeacherCodesFromExcel() {
+    if (!teacherExcelRows || teacherExcelRows.length === 0) return;
+    setGeneratingTeacherCodes(true);
+    try {
+      const updatedRows: any[] = [];
+      for (const row of teacherExcelRows) {
+        const teacherName =
+          row["ชื่อ-นามสกุล"] ||
+          row["ชื่อครู"] ||
+          row["ชื่อ"] ||
+          row["fullName"] ||
+          row["name"] ||
+          "ครูผู้สอน";
+        const subject = row["กลุ่มสาระ"] || row["วิชา"] || row["ตำแหน่ง"] || "";
+        const noteStr = subject ? `${teacherName} (${subject})` : teacherName;
+
+        const newInvite = await createTeacherInvite({
+          note: noteStr,
+          createdByUid: profile?.uid,
+          createdByName: profile?.displayName || profile?.fullName,
+        });
+
+        updatedRows.push({
+          ...row,
+          "รหัสลงทะเบียนบุคลากร (Teacher Invite Code)": newInvite.code,
+        });
+      }
+
+      setTeacherExcelRows(updatedRows);
+      const exportName = `รายชื่อครูพร้อมรหัสลงทะเบียน_${new Date().toISOString().slice(0, 10)}`;
+      await exportToExcel(updatedRows, exportName, "รายชื่อครู");
+
+      toast({
+        title: "สร้างรหัสเชิญครูสำเร็จและดาวน์โหลดแล้ว!",
+        description: `สร้างรหัสลงทะเบียนครูและบรรจุลงในไฟล์ Excel ${updatedRows.length} รายการเรียบร้อยแล้ว`,
+      });
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "เกิดข้อผิดพลาดในการสร้างรหัส",
+        description: err instanceof Error ? err.message : "กรุณาลองใหม่อีกครั้ง",
+      });
+    } finally {
+      setGeneratingTeacherCodes(false);
+    }
+  }
+
+  async function handleDownloadTeacherTemplate() {
+    const template = [
+      {
+        "ลำดับ": 1,
+        "ชื่อ-นามสกุล": "อาจารย์สมคิด จิตมั่นคง",
+        "กลุ่มสาระ": "วิทยาศาสตร์และเทคโนโลยี",
+        "เบอร์โทรศัพท์": "081-234-5678",
+      },
+      {
+        "ลำดับ": 2,
+        "ชื่อ-นามสกุล": "อาจารย์พรพิมล กลิ่นสุคนธ์",
+        "กลุ่มสาระ": "คณิตศาสตร์",
+        "เบอร์โทรศัพท์": "089-987-6543",
+      },
+    ];
+    await exportToExcel(template, "แม่แบบรายชื่อครู_EduConnect360", "รายชื่อครู");
+  }
+
+  /* ---------------- Student Excel Batch Import & Class Setup Handlers ---------------- */
+  async function handleStudentExcelUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setStudentExcelFileName(file.name);
+    try {
+      const rows = await parseExcelOrCsv(file);
+      if (!rows || rows.length === 0) {
+        throw new Error("ไม่พบข้อมูลในไฟล์ Excel ที่อัปโหลด");
+      }
+      setStudentExcelRows(rows);
+      setStudentImportResult(null);
+      toast({
+        title: "อ่านไฟล์ Excel สำเร็จ",
+        description: `พบข้อมูลนักเรียนทั้งหมด ${rows.length} คน`,
+      });
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "อ่านไฟล์ไม่สำเร็จ",
+        description: err instanceof Error ? err.message : "กรุณาตรวจสอบไฟล์",
+      });
+    }
+  }
+
+  async function handleExecuteStudentImport() {
+    if (!studentExcelRows || studentExcelRows.length === 0) return;
+    setImportingStudents(true);
+    try {
+      const mappedStudents: Array<{ studentId: string; fullName: string; gradeLevel: string }> = [];
+
+      for (const row of studentExcelRows) {
+        const rawId = (row["รหัสนักเรียน"] || row["studentId"] || row["ID"] || row["รหัส"] || "").toString().trim();
+        const rawName = (row["ชื่อ-นามสกุล"] || row["ชื่อ"] || row["fullName"] || row["name"] || "").toString().trim();
+        const rawGrade = (row["ระดับชั้น"] || row["ชั้นเรียน"] || row["ห้อง"] || row["grade"] || row["gradeLevel"] || "").toString().trim();
+
+        if (rawId && rawName) {
+          mappedStudents.push({
+            studentId: rawId,
+            fullName: rawName,
+            gradeLevel: rawGrade,
+          });
+        }
+      }
+
+      if (mappedStudents.length === 0) {
+        throw new Error("ไม่พบข้อมูลรหัสนักเรียนและชื่อ-นามสกุลในไฟล์ กรุณาตรวจสอบหัวตาราง");
+      }
+
+      const result = await bulkImportStudentsAndClasses(mappedStudents, profile?.uid || "admin");
+      setStudentImportResult(result);
+      toast({
+        title: "นำเข้านักเรียนและจัดห้องเรียนสำเร็จ!",
+        description: `สร้างบัญชีนักเรียน ${result.createdStudents} คน และจัดสรร ${result.totalClasses} ห้องเรียนเรียบร้อยแล้ว`,
+      });
+      loadUsersAndTokens();
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "นำเข้าไม่สำเร็จ",
+        description: err instanceof Error ? err.message : "เกิดข้อผิดพลาด",
+      });
+    } finally {
+      setImportingStudents(false);
+    }
+  }
+
+  async function handleDownloadStudentTemplate() {
+    const template = [
+      {
+        "รหัสนักเรียน": "67101",
+        "ชื่อ-นามสกุล": "เด็กชายกิตติศักดิ์ พัฒนา",
+        "ระดับชั้น": "ม.1/1",
+      },
+      {
+        "รหัสนักเรียน": "67102",
+        "ชื่อ-นามสกุล": "เด็กหญิงกัญญารัตน์ สดใส",
+        "ระดับชั้น": "ม.1/1",
+      },
+      {
+        "รหัสนักเรียน": "67103",
+        "ชื่อ-นามสกุล": "เด็กชายธนากร เก่งกล้า",
+        "ระดับชั้น": "ม.1/2",
+      },
+      {
+        "รหัสนักเรียน": "67201",
+        "ชื่อ-นามสกุล": "เด็กหญิงปาริฉัตร สมบูรณ์",
+        "ระดับชั้น": "ป.4",
+      },
+    ];
+    await exportToExcel(template, "แม่แบบรายชื่อนักเรียน_EduConnect360", "รายชื่อนักเรียน");
   }
 
   /* ---------------- Tab 2: Admin Whitelist Handlers ---------------- */
@@ -459,6 +662,18 @@ export default function AdminDashboard() {
               </span>
             )}
           </button>
+
+          <button
+            onClick={() => setActiveTab("import-students")}
+            className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition ${
+              activeTab === "import-students"
+                ? "border-emerald-600 text-emerald-700 font-semibold"
+                : "border-transparent text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            <i className="fa-solid fa-file-excel" />
+            <span>นำเข้ารายชื่อนักเรียน &amp; จัดห้องเรียน (Excel)</span>
+          </button>
         </div>
 
         {/* TAB 1: TEACHER INVITES */}
@@ -522,6 +737,72 @@ export default function AdminDashboard() {
                     <i className="fa-solid fa-copy" />
                     {copiedCode === latestCode ? "คัดลอกแล้ว!" : "คัดลอกรหัส"}
                   </button>
+                </div>
+              )}
+            </div>
+
+            {/* Teacher Batch Excel Card */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                    <span className="w-7 h-7 rounded-lg bg-teal-100 text-teal-700 flex items-center justify-center text-xs">
+                      <i className="fa-solid fa-file-excel" />
+                    </span>
+                    แนบไฟล์ Excel ครู &amp; เจนรหัสลงทะเบียน (Teacher Invite Code)
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-1">
+                    อัปโหลดรายชื่อครูจาก Excel ระบบจะสร้างรหัสลงทะเบียนบุคลากร และบันทึกรหัสลงในคอลัมน์ของไฟล์ให้ทันที
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleDownloadTeacherTemplate}
+                    className="px-3.5 py-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold flex items-center gap-1.5 transition"
+                  >
+                    <i className="fa-solid fa-download text-teal-600" /> แม่แบบ Excel ครู
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => fileInputTeacherRef.current?.click()}
+                    className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition"
+                  >
+                    <i className="fa-solid fa-upload" /> แนบไฟล์ Excel ครู
+                  </button>
+                  <input
+                    type="file"
+                    ref={fileInputTeacherRef}
+                    onChange={handleTeacherExcelUpload}
+                    accept=".xlsx,.xls,.csv"
+                    className="hidden"
+                  />
+                </div>
+              </div>
+
+              {teacherExcelRows.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-slate-100 animate-in fade-in space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <span className="text-xs text-slate-600">
+                      ตรวจพบรายชื่อครู <strong>{teacherExcelRows.length}</strong> ท่าน จากไฟล์ <span className="font-mono text-teal-700 font-semibold">{teacherExcelFileName}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleGenerateTeacherCodesFromExcel}
+                      disabled={generatingTeacherCodes}
+                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-2 shadow-sm transition disabled:opacity-50"
+                    >
+                      {generatingTeacherCodes ? (
+                        <>
+                          <i className="fa-solid fa-circle-notch fa-spin" /> กำลังเจนรหัสลงทะเบียนและบันทึกลง Excel...
+                        </>
+                      ) : (
+                        <>
+                          <i className="fa-solid fa-wand-magic-sparkles" /> กดเจนรหัสมาใส่ในรายชื่อของครูใน Excel
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -977,6 +1258,178 @@ export default function AdminDashboard() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {activeTab === "import-students" && (
+          <div className="space-y-6 animate-in fade-in">
+            {/* Header / Intro Card */}
+            <div className="p-6 rounded-2xl bg-white border border-slate-200/80 shadow-sm">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-sm">
+                      <i className="fa-solid fa-file-excel" />
+                    </span>
+                    <h2 className="text-lg font-bold text-slate-800">
+                      นำเข้ารายชื่อนักเรียน &amp; จัดห้องเรียนอัตโนมัติ (Excel)
+                    </h2>
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    อัปโหลดไฟล์ Excel (.xlsx, .xls, .csv) เพื่อสร้างบัญชีนักเรียน และสร้างห้องเรียนอัตโนมัติตามระดับชั้นของสถานศึกษา
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={handleDownloadStudentTemplate}
+                    className="px-3.5 py-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold flex items-center gap-2 transition"
+                  >
+                    <i className="fa-solid fa-download text-emerald-600" /> ดาวน์โหลดแม่แบบ Excel
+                  </button>
+                  <button
+                    onClick={() => fileInputStudentRef.current?.click()}
+                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center gap-2 shadow-sm transition"
+                  >
+                    <i className="fa-solid fa-upload" /> เลือกไฟล์ Excel นักเรียน
+                  </button>
+                  <input
+                    type="file"
+                    ref={fileInputStudentRef}
+                    onChange={handleStudentExcelUpload}
+                    accept=".xlsx,.xls,.csv"
+                    className="hidden"
+                  />
+                </div>
+              </div>
+
+              {/* Requirement Rule Notice */}
+              <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-3 pt-4 border-t border-slate-100">
+                <div className="p-3 rounded-xl bg-emerald-50/60 border border-emerald-100 flex items-start gap-2.5">
+                  <i className="fa-solid fa-layer-group text-emerald-600 mt-0.5 text-sm" />
+                  <div className="text-xs text-emerald-900 leading-relaxed">
+                    <span className="font-semibold">กฎการจัดห้องเรียนอัตโนมัติ:</span> หากในไฟล์ระบุระดับชั้นแบบไม่มีห้อง เช่น <code className="bg-emerald-100/70 px-1 py-0.5 rounded text-emerald-800 font-mono">ม.1</code> หรือ <code className="bg-emerald-100/70 px-1 py-0.5 rounded text-emerald-800 font-mono">ป.4</code> ระบบจะจัดสรรเข้าเป็น <strong>ห้อง 1</strong> โดยอัตโนมัติ (เช่น <span className="font-semibold">ม.1/1</span> หรือ <span className="font-semibold">ป.4/1</span>)
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-teal-50/60 border border-teal-100 flex items-start gap-2.5">
+                  <i className="fa-solid fa-key text-teal-600 mt-0.5 text-sm" />
+                  <div className="text-xs text-teal-900 leading-relaxed">
+                    <span className="font-semibold">รหัสนักเรียน &amp; รหัสผ่าน:</span> นักเรียนสามารถเข้าสู่ระบบด้วย <strong>รหัสนักเรียน</strong> และรหัสผ่านเหมือนกันทุกคนคือ <code className="bg-teal-100/70 px-1 py-0.5 rounded text-teal-800 font-mono font-bold">0000</code> โดยระบบจะสร้างบัญชีและลิงก์ผู้ปกครองให้อัตโนมัติ
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Import Result Notification */}
+            {studentImportResult && (
+              <div className="p-5 rounded-2xl bg-emerald-50 border border-emerald-200 shadow-sm animate-in fade-in">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                    <i className="fa-solid fa-circle-check text-lg" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-sm font-bold text-emerald-900">
+                      นำเข้าข้อมูลนักเรียนและสร้างห้องเรียนสำเร็จ!
+                    </h3>
+                    <p className="text-xs text-emerald-700 mt-1">
+                      เพิ่มนักเรียนใหม่จำนวน <span className="font-bold">{studentImportResult.createdStudents}</span> คน และจัดสรรห้องเรียน <span className="font-bold">{studentImportResult.totalClasses}</span> ห้อง
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {studentImportResult.classList.map((cName) => (
+                        <span key={cName} className="px-2.5 py-1 rounded-lg bg-white border border-emerald-200 text-emerald-800 text-xs font-semibold shadow-xs">
+                          <i className="fa-solid fa-chalkboard-user mr-1 text-emerald-600" /> {cName}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Preview Table if file loaded */}
+            {studentExcelRows.length > 0 && (
+              <div className="p-6 rounded-2xl bg-white border border-slate-200/80 shadow-sm space-y-4 animate-in fade-in">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center font-bold text-xs">
+                      {studentExcelRows.length}
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-800">
+                        ตัวอย่างรายชื่อนักเรียนจากไฟล์: <span className="text-emerald-700 font-mono">{studentExcelFileName}</span>
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        ตรวจสอบความถูกต้องของรหัสและระดับชั้นก่อนกดยืนยันนำเข้า
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleExecuteStudentImport}
+                    disabled={importingStudents}
+                    className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition disabled:opacity-50"
+                  >
+                    {importingStudents ? (
+                      <>
+                        <i className="fa-solid fa-circle-notch fa-spin" /> กำลังนำเข้าและสร้างห้องเรียน...
+                      </>
+                    ) : (
+                      <>
+                        <i className="fa-solid fa-user-check" /> เริ่มนำเข้าและจัดห้องเรียนอัตโนมัติ
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <div className="overflow-x-auto border border-slate-100 rounded-xl">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                      <tr>
+                        <th className="py-2.5 px-4 w-12 text-center">#</th>
+                        <th className="py-2.5 px-4">รหัสนักเรียน</th>
+                        <th className="py-2.5 px-4">ชื่อ-นามสกุล</th>
+                        <th className="py-2.5 px-4">ระดับชั้นจากไฟล์</th>
+                        <th className="py-2.5 px-4">ห้องเรียนอัตโนมัติ</th>
+                        <th className="py-2.5 px-4 text-center">รหัสผ่านเริ่มต้น</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-slate-700">
+                      {studentExcelRows.slice(0, 30).map((row, idx) => {
+                        const rawId = (row["รหัสนักเรียน"] || row["studentId"] || row["ID"] || row["รหัส"] || "-").toString();
+                        const rawName = (row["ชื่อ-นามสกุล"] || row["ชื่อ"] || row["fullName"] || row["name"] || "-").toString();
+                        const rawGrade = (row["ระดับชั้น"] || row["ชั้นเรียน"] || row["ห้อง"] || row["grade"] || row["gradeLevel"] || "ห้อง 1").toString();
+                        const resolvedRoom = normalizeGradeRoom(rawGrade);
+
+                        return (
+                          <tr key={idx} className="hover:bg-slate-50/70 transition">
+                            <td className="py-2 px-4 text-center text-slate-400">{idx + 1}</td>
+                            <td className="py-2 px-4 font-mono font-bold text-slate-900">{rawId}</td>
+                            <td className="py-2 px-4 font-medium text-slate-800">{rawName}</td>
+                            <td className="py-2 px-4 text-slate-600">{rawGrade}</td>
+                            <td className="py-2 px-4">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                <i className="fa-solid fa-door-open mr-1 text-emerald-600" />
+                                {resolvedRoom}
+                              </span>
+                            </td>
+                            <td className="py-2 px-4 text-center">
+                              <span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-600 font-bold text-[11px]">
+                                0000
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {studentExcelRows.length > 30 && (
+                  <p className="text-center text-xs text-slate-400 py-1">
+                    แสดง 30 จากทั้งหมด {studentExcelRows.length} รายการ (ระบบจะนำเข้าข้อมูลครบทุกแถว)
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         )}
       </main>

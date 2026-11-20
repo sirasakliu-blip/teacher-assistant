@@ -41,6 +41,12 @@ interface AuthContextValue {
     email: string,
     password: string,
     displayName: string,
+    schoolInfo?: {
+      schoolName?: string;
+      postalCode?: string;
+      province?: string;
+      district?: string;
+    },
   ) => Promise<void>;
   resendVerificationEmail: () => Promise<void>;
   reloadUser: () => Promise<FirebaseUser | null>;
@@ -235,6 +241,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     email: string,
     password: string,
     displayName: string,
+    schoolInfo?: {
+      schoolName?: string;
+      postalCode?: string;
+      province?: string;
+      district?: string;
+    },
   ) {
     if (!auth || !db) throw new Error("Firebase is not configured.");
     const cleanEmail = email.trim().toLowerCase();
@@ -257,6 +269,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       displayName,
       fullName: displayName,
       role: "admin",
+      schoolName: schoolInfo?.schoolName || "",
+      postalCode: schoolInfo?.postalCode || "",
+      province: schoolInfo?.province || "",
+      district: schoolInfo?.district || "",
       linkedStudentIds: [],
       photoURL: null,
       createdAt: serverTimestamp(),
