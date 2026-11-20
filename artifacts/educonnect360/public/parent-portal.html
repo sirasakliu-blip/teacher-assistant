@@ -653,13 +653,17 @@
     // BINDING CHECK & SWITCH VIEWS
     // ---------------------------------------------------------------------------
     async function checkParentBinding() {
-      const bindingDocRef = db.collection("parent_bindings").doc(currentLineUser.userId);
-      const snapshot = await bindingDocRef.get();
+      try {
+        const bindingDocRef = db.collection("parent_bindings").doc(currentLineUser.userId);
+        const snapshot = await bindingDocRef.get();
 
-      if (snapshot.exists) {
-        currentBinding = snapshot.data();
-        showDashboardView();
-      } else {
+        if (snapshot.exists) {
+          currentBinding = snapshot.data();
+          showDashboardView();
+          hideLoading();
+          return;
+        }
+
         // Also check legacy `parent_line_links`
         const legacyRef = db.collection("parent_line_links").doc(currentLineUser.userId);
         const legacySnap = await legacyRef.get();
@@ -678,9 +682,32 @@
           // Persist to parent_bindings for future fast access
           await bindingDocRef.set(currentBinding, { merge: true });
           showDashboardView();
-        } else {
-          showBindingView();
+          hideLoading();
+          return;
         }
+      } catch (err) {
+        console.warn("Binding check error:", err);
+      }
+
+      // If running on desktop browser or opened directly via tab URL / demo (ideal for PC clip recording):
+      const isLiffInClient = typeof window.liff !== "undefined" && window.liff?.isInClient && window.liff.isInClient();
+      const urlParams = new URLSearchParams(window.location.search);
+      const isDirectTabOrDesktop = !isLiffInClient || urlParams.has("tab") || urlParams.get("demo") === "true";
+
+      if (isDirectTabOrDesktop) {
+        currentBinding = {
+          studentId: "1620",
+          studentUid: "demo_student_1620",
+          studentName: "เด็กชายณัฐพล แหลมสิงห์",
+          gradeLevel: "ม.2/1",
+          grade: "M2",
+          room: "1",
+          lineUserId: currentLineUser.userId,
+          parentDisplayName: currentLineUser.displayName || "ผู้ปกครอง (โหมดสาธิต)"
+        };
+        showDashboardView();
+      } else {
+        showBindingView();
       }
       hideLoading();
     }
