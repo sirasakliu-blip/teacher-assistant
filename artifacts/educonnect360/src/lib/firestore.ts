@@ -2756,60 +2756,327 @@ export async function bulkImportStudentsAndClasses(
 /* Student Class Schedule / Timetable                                  */
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ */
+/* Student Class Schedule / Timetable (ม.1 - ม.6)                     */
+/* ------------------------------------------------------------------ */
+
+export function extractGradeYear(gradeStr: string): number {
+  if (!gradeStr) return 2;
+  const match = gradeStr.match(/[มm]\.?\s*([1-6])/i);
+  if (match) return parseInt(match[1], 10);
+  const numMatch = gradeStr.match(/([1-6])/);
+  if (numMatch) return parseInt(numMatch[1], 10);
+  return 2;
+}
+
 export function generateDefaultSchedule(
   gradeLevel: string,
   studentClasses: Class[] = [],
 ): ScheduleItem[] {
   const norm = normalizeGradeRoom(gradeLevel) || "ม.2/1";
+  const year = extractGradeYear(norm);
 
-  // Standard secondary school subjects pool
-  const subjectsByDay: Record<DayOfWeek, Array<{ name: string; code: string; room: string; color: ScheduleItem["color"] }>> = {
-    monday: [
-      { name: "ภาษาไทยพื้นฐาน", code: "ท22101", room: "ห้อง 211", color: "blue" },
-      { name: "คณิตศาสตร์พื้นฐาน", code: "ค22101", room: "ห้อง 214", color: "purple" },
-      { name: "วิทยาศาสตร์และเทคโนโลยี", code: "ว22101", room: "LAB วิทย์ 1", color: "emerald" },
-      { name: "สังคมศึกษา ศาสนาฯ", code: "ส22101", room: "ห้อง 211", color: "amber" },
-      { name: "ภาษาอังกฤษพื้นฐาน", code: "อ22101", room: "ห้อง 211", color: "teal" },
-      { name: "สุขศึกษาและพลศึกษา", code: "พ22101", room: "โรงยิม", color: "rose" },
-      { name: "กิจกรรมแนะแนว", code: "ก22901", room: "ห้อง 211", color: "indigo" },
-    ],
-    tuesday: [
-      { name: "ภาษาอังกฤษพื้นฐาน", code: "อ22101", room: "ห้อง 211", color: "teal" },
-      { name: "สังคมศึกษา ศาสนาฯ", code: "ส22101", room: "ห้อง 211", color: "amber" },
-      { name: "คณิตศาสตร์พื้นฐาน", code: "ค22101", room: "ห้อง 214", color: "purple" },
-      { name: "ภาษาไทยพื้นฐาน", code: "ท22101", room: "ห้อง 211", color: "blue" },
-      { name: "วิทยาการคำนวณ", code: "ว22103", room: "ห้องคอม 1", color: "emerald" },
-      { name: "ศิลปะและดนตรี", code: "ศ22101", room: "ห้องดนตรี", color: "rose" },
-      { name: "กิจกรรมชุมนุม/ชมรม", code: "ก22902", room: "ตามกลุ่มกิจกรรม", color: "indigo" },
-    ],
-    wednesday: [
-      { name: "คณิตศาสตร์เพิ่มเติม", code: "ค22201", room: "ห้อง 214", color: "purple" },
-      { name: "วิทยาศาสตร์และเทคโนโลยี", code: "ว22101", room: "LAB วิทย์ 1", color: "emerald" },
-      { name: "ภาษาไทยพื้นฐาน", code: "ท22101", room: "ห้อง 211", color: "blue" },
-      { name: "ประวัติศาสตร์", code: "ส22102", room: "ห้อง 211", color: "amber" },
-      { name: "ภาษาอังกฤษเพื่อการสื่อสาร", code: "อ22201", room: "Sound LAB", color: "teal" },
-      { name: "การงานอาชีพ", code: "ง22101", room: "โรงฝึกงาน", color: "amber" },
-      { name: "กิจกรรมลูกเสือ-เนตรนารี", code: "ก22903", room: "ลานกิจกรรม", color: "indigo" },
-    ],
-    thursday: [
-      { name: "วิทยาศาสตร์และเทคโนโลยี", code: "ว22101", room: "LAB วิทย์ 1", color: "emerald" },
-      { name: "คณิตศาสตร์พื้นฐาน", code: "ค22101", room: "ห้อง 214", color: "purple" },
-      { name: "ภาษาอังกฤษพื้นฐาน", code: "อ22101", room: "ห้อง 211", color: "teal" },
-      { name: "ภาษาไทยพื้นฐาน", code: "ท22101", room: "ห้อง 211", color: "blue" },
-      { name: "การออกแบบและเทคโนโลยี", code: "ว22104", room: "ห้องคอม 2", color: "emerald" },
-      { name: "หน้าที่พลเมือง", code: "ส22201", room: "ห้อง 211", color: "amber" },
-      { name: "โฮมรูมและคุณธรรม", code: "ก22904", room: "ห้อง 211", color: "indigo" },
-    ],
-    friday: [
-      { name: "สังคมศึกษา ศาสนาฯ", code: "ส22101", room: "ห้อง 211", color: "amber" },
-      { name: "ภาษาไทยพื้นฐาน", code: "ท22101", room: "ห้อง 211", color: "blue" },
-      { name: "คณิตศาสตร์พื้นฐาน", code: "ค22101", room: "ห้อง 214", color: "purple" },
-      { name: "ภาษาอังกฤษพื้นฐาน", code: "อ22101", room: "ห้อง 211", color: "teal" },
-      { name: "วิทยาศาสตร์และเทคโนโลยี", code: "ว22101", room: "LAB วิทย์ 1", color: "emerald" },
-      { name: "พลศึกษา (กีฬา)", code: "พ22102", room: "สนามกีฬา", color: "rose" },
-      { name: "สรุปกิจกรรมประจำสัปดาห์", code: "ก22905", room: "ห้อง 211", color: "indigo" },
-    ],
+  // Curriculum definitions for Junior High (ม.1 - ม.3) and Senior High (ม.4 - ม.6)
+  const curriculumMap: Record<
+    number,
+    Record<DayOfWeek, Array<{ name: string; code: string; room: string; color: ScheduleItem["color"] }>>
+  > = {
+    // ===== ม.1 =====
+    1: {
+      monday: [
+        { name: "ภาษาไทยพื้นฐาน 1", code: "ท21101", room: "ห้อง 111", color: "blue" },
+        { name: "คณิตศาสตร์พื้นฐาน 1", code: "ค21101", room: "ห้อง 114", color: "purple" },
+        { name: "วิทยาศาสตร์พื้นฐาน 1", code: "ว21101", room: "LAB วิทย์ ม.ต้น", color: "emerald" },
+        { name: "สังคมศึกษา 1", code: "ส21101", room: "ห้อง 111", color: "amber" },
+        { name: "ภาษาอังกฤษพื้นฐาน 1", code: "อ21101", room: "ห้อง 111", color: "teal" },
+        { name: "สุขศึกษาและพลศึกษา", code: "พ21101", room: "โรงยิม 1", color: "rose" },
+        { name: "กิจกรรมแนะแนว", code: "ก21901", room: "ห้อง 111", color: "indigo" },
+      ],
+      tuesday: [
+        { name: "ภาษาอังกฤษพื้นฐาน 1", code: "อ21101", room: "ห้อง 111", color: "teal" },
+        { name: "สังคมศึกษา 1", code: "ส21101", room: "ห้อง 111", color: "amber" },
+        { name: "คณิตศาสตร์พื้นฐาน 1", code: "ค21101", room: "ห้อง 114", color: "purple" },
+        { name: "ภาษาไทยพื้นฐาน 1", code: "ท21101", room: "ห้อง 111", color: "blue" },
+        { name: "วิทยาการคำนวณ 1", code: "ว21103", room: "ห้องคอม 1", color: "emerald" },
+        { name: "ศิลปะและทัศนศิลป์", code: "ศ21101", room: "ห้องศิลปะ", color: "rose" },
+        { name: "กิจกรรมชุมนุม/ชมรม", code: "ก21902", room: "ตามกลุ่มกิจกรรม", color: "indigo" },
+      ],
+      wednesday: [
+        { name: "คณิตศาสตร์เพิ่มเติม 1", code: "ค21201", room: "ห้อง 114", color: "purple" },
+        { name: "วิทยาศาสตร์พื้นฐาน 1", code: "ว21101", room: "LAB วิทย์ ม.ต้น", color: "emerald" },
+        { name: "ภาษาไทยพื้นฐาน 1", code: "ท21101", room: "ห้อง 111", color: "blue" },
+        { name: "ประวัติศาสตร์ 1", code: "ส21102", room: "ห้อง 111", color: "amber" },
+        { name: "ภาษาอังกฤษเพื่อการสื่อสาร", code: "อ21201", room: "Sound LAB", color: "teal" },
+        { name: "การงานอาชีพและเทคโนโลยี", code: "ง21101", room: "โรงฝึกงาน 1", color: "amber" },
+        { name: "กิจกรรมลูกเสือ-เนตรนารี", code: "ก21903", room: "ลานกิจกรรม", color: "indigo" },
+      ],
+      thursday: [
+        { name: "วิทยาศาสตร์พื้นฐาน 1", code: "ว21101", room: "LAB วิทย์ ม.ต้น", color: "emerald" },
+        { name: "คณิตศาสตร์พื้นฐาน 1", code: "ค21101", room: "ห้อง 114", color: "purple" },
+        { name: "ภาษาอังกฤษพื้นฐาน 1", code: "อ21101", room: "ห้อง 111", color: "teal" },
+        { name: "ภาษาไทยพื้นฐาน 1", code: "ท21101", room: "ห้อง 111", color: "blue" },
+        { name: "การออกแบบและเทคโนโลยี 1", code: "ว21104", room: "ห้องคอม 2", color: "emerald" },
+        { name: "หน้าที่พลเมือง 1", code: "ส21201", room: "ห้อง 111", color: "amber" },
+        { name: "โฮมรูมและคุณธรรม", code: "ก21904", room: "ห้อง 111", color: "indigo" },
+      ],
+      friday: [
+        { name: "สังคมศึกษา 1", code: "ส21101", room: "ห้อง 111", color: "amber" },
+        { name: "ภาษาไทยพื้นฐาน 1", code: "ท21101", room: "ห้อง 111", color: "blue" },
+        { name: "คณิตศาสตร์พื้นฐาน 1", code: "ค21101", room: "ห้อง 114", color: "purple" },
+        { name: "ภาษาอังกฤษพื้นฐาน 1", code: "อ21101", room: "ห้อง 111", color: "teal" },
+        { name: "วิทยาศาสตร์พื้นฐาน 1", code: "ว21101", room: "LAB วิทย์ ม.ต้น", color: "emerald" },
+        { name: "พลศึกษา (กรีฑา)", code: "พ21102", room: "สนามกีฬา", color: "rose" },
+        { name: "กิจกรรมบำเพ็ญประโยชน์", code: "ก21905", room: "ห้อง 111", color: "indigo" },
+      ],
+    },
+
+    // ===== ม.2 =====
+    2: {
+      monday: [
+        { name: "ภาษาไทยพื้นฐาน 2", code: "ท22101", room: "ห้อง 211", color: "blue" },
+        { name: "คณิตศาสตร์พื้นฐาน 2", code: "ค22101", room: "ห้อง 214", color: "purple" },
+        { name: "วิทยาศาสตร์และเทคโนโลยี 2", code: "ว22101", room: "LAB วิทย์ 1", color: "emerald" },
+        { name: "สังคมศึกษา 2", code: "ส22101", room: "ห้อง 211", color: "amber" },
+        { name: "ภาษาอังกฤษพื้นฐาน 2", code: "อ22101", room: "ห้อง 211", color: "teal" },
+        { name: "สุขศึกษาและพลศึกษา", code: "พ22101", room: "โรงยิม", color: "rose" },
+        { name: "กิจกรรมแนะแนว", code: "ก22901", room: "ห้อง 211", color: "indigo" },
+      ],
+      tuesday: [
+        { name: "ภาษาอังกฤษพื้นฐาน 2", code: "อ22101", room: "ห้อง 211", color: "teal" },
+        { name: "สังคมศึกษา 2", code: "ส22101", room: "ห้อง 211", color: "amber" },
+        { name: "คณิตศาสตร์พื้นฐาน 2", code: "ค22101", room: "ห้อง 214", color: "purple" },
+        { name: "ภาษาไทยพื้นฐาน 2", code: "ท22101", room: "ห้อง 211", color: "blue" },
+        { name: "วิทยาการคำนวณ 2", code: "ว22103", room: "ห้องคอม 1", color: "emerald" },
+        { name: "ศิลปะและดนตรี-นาฏศิลป์", code: "ศ22101", room: "ห้องดนตรี", color: "rose" },
+        { name: "กิจกรรมชุมนุม/ชมรม", code: "ก22902", room: "ตามกลุ่มกิจกรรม", color: "indigo" },
+      ],
+      wednesday: [
+        { name: "คณิตศาสตร์เพิ่มเติม 2", code: "ค22201", room: "ห้อง 214", color: "purple" },
+        { name: "วิทยาศาสตร์และเทคโนโลยี 2", code: "ว22101", room: "LAB วิทย์ 1", color: "emerald" },
+        { name: "ภาษาไทยพื้นฐาน 2", code: "ท22101", room: "ห้อง 211", color: "blue" },
+        { name: "ประวัติศาสตร์ 2", code: "ส22102", room: "ห้อง 211", color: "amber" },
+        { name: "ภาษาอังกฤษเพื่อการสื่อสาร", code: "อ22201", room: "Sound LAB", color: "teal" },
+        { name: "การงานอาชีพ 2", code: "ง22101", room: "โรงฝึกงาน", color: "amber" },
+        { name: "กิจกรรมลูกเสือ-เนตรนารี", code: "ก22903", room: "ลานกิจกรรม", color: "indigo" },
+      ],
+      thursday: [
+        { name: "วิทยาศาสตร์และเทคโนโลยี 2", code: "ว22101", room: "LAB วิทย์ 1", color: "emerald" },
+        { name: "คณิตศาสตร์พื้นฐาน 2", code: "ค22101", room: "ห้อง 214", color: "purple" },
+        { name: "ภาษาอังกฤษพื้นฐาน 2", code: "อ22101", room: "ห้อง 211", color: "teal" },
+        { name: "ภาษาไทยพื้นฐาน 2", code: "ท22101", room: "ห้อง 211", color: "blue" },
+        { name: "การออกแบบและเทคโนโลยี 2", code: "ว22104", room: "ห้องคอม 2", color: "emerald" },
+        { name: "หน้าที่พลเมือง 2", code: "ส22201", room: "ห้อง 211", color: "amber" },
+        { name: "โฮมรูมและคุณธรรม", code: "ก22904", room: "ห้อง 211", color: "indigo" },
+      ],
+      friday: [
+        { name: "สังคมศึกษา 2", code: "ส22101", room: "ห้อง 211", color: "amber" },
+        { name: "ภาษาไทยพื้นฐาน 2", code: "ท22101", room: "ห้อง 211", color: "blue" },
+        { name: "คณิตศาสตร์พื้นฐาน 2", code: "ค22101", room: "ห้อง 214", color: "purple" },
+        { name: "ภาษาอังกฤษพื้นฐาน 2", code: "อ22101", room: "ห้อง 211", color: "teal" },
+        { name: "วิทยาศาสตร์และเทคโนโลยี 2", code: "ว22101", room: "LAB วิทย์ 1", color: "emerald" },
+        { name: "พลศึกษา (แบดมินตัน)", code: "พ22102", room: "สนามกีฬา", color: "rose" },
+        { name: "สรุปกิจกรรมประจำสัปดาห์", code: "ก22905", room: "ห้อง 211", color: "indigo" },
+      ],
+    },
+
+    // ===== ม.3 =====
+    3: {
+      monday: [
+        { name: "ภาษาไทยพื้นฐาน 3", code: "ท23101", room: "ห้อง 311", color: "blue" },
+        { name: "คณิตศาสตร์พื้นฐาน 3", code: "ค23101", room: "ห้อง 314", color: "purple" },
+        { name: "วิทยาศาสตร์ 3 (ฟิสิกส์-เคมี)", code: "ว23101", room: "LAB วิทย์ 2", color: "emerald" },
+        { name: "สังคมศึกษา 3", code: "ส23101", room: "ห้อง 311", color: "amber" },
+        { name: "ภาษาอังกฤษพื้นฐาน 3", code: "อ23101", room: "ห้อง 311", color: "teal" },
+        { name: "สุขศึกษาและพลศึกษา", code: "พ23101", room: "โรงยิม", color: "rose" },
+        { name: "กิจกรรมแนะแนวศึกษาต่อ", code: "ก23901", room: "ห้อง 311", color: "indigo" },
+      ],
+      tuesday: [
+        { name: "ภาษาอังกฤษพื้นฐาน 3", code: "อ23101", room: "ห้อง 311", color: "teal" },
+        { name: "สังคมศึกษา 3", code: "ส23101", room: "ห้อง 311", color: "amber" },
+        { name: "คณิตศาสตร์พื้นฐาน 3", code: "ค23101", room: "ห้อง 314", color: "purple" },
+        { name: "ภาษาไทยพื้นฐาน 3", code: "ท23101", room: "ห้อง 311", color: "blue" },
+        { name: "โครงงานวิทยาการคำนวณ", code: "ว23103", room: "ห้องคอม 1", color: "emerald" },
+        { name: "ดนตรีสากลและนาฏศิลป์", code: "ศ23101", room: "ห้องดนตรี", color: "rose" },
+        { name: "กิจกรรมชุมนุม", code: "ก23902", room: "ตามกลุ่มกิจกรรม", color: "indigo" },
+      ],
+      wednesday: [
+        { name: "คณิตศาสตร์เพิ่มเติม 3", code: "ค23201", room: "ห้อง 314", color: "purple" },
+        { name: "วิทยาศาสตร์ 3 (ชีววิทยา)", code: "ว23101", room: "LAB ชีวะ", color: "emerald" },
+        { name: "ภาษาไทยพื้นฐาน 3", code: "ท23101", room: "ห้อง 311", color: "blue" },
+        { name: "ประวัติศาสตร์ 3", code: "ส23102", room: "ห้อง 311", color: "amber" },
+        { name: "ภาษาอังกฤษเพื่อการนำเสนอ", code: "อ23201", room: "Sound LAB", color: "teal" },
+        { name: "การงานอาชีพและธุรกิจ", code: "ง23101", room: "โรงฝึกงาน", color: "amber" },
+        { name: "กิจกรรมลูกเสือ-เนตรนารี", code: "ก23903", room: "ลานกิจกรรม", color: "indigo" },
+      ],
+      thursday: [
+        { name: "วิทยาศาสตร์ 3 (โลก ดาราศาสตร์)", code: "ว23101", room: "LAB วิทย์ 2", color: "emerald" },
+        { name: "คณิตศาสตร์พื้นฐาน 3", code: "ค23101", room: "ห้อง 314", color: "purple" },
+        { name: "ภาษาอังกฤษพื้นฐาน 3", code: "อ23101", room: "ห้อง 311", color: "teal" },
+        { name: "ภาษาไทยพื้นฐาน 3", code: "ท23101", room: "ห้อง 311", color: "blue" },
+        { name: "การออกแบบและเทคโนโลยี 3", code: "ว23104", room: "ห้องคอม 2", color: "emerald" },
+        { name: "หน้าที่พลเมืองและกฎหมาย", code: "ส23201", room: "ห้อง 311", color: "amber" },
+        { name: "โฮมรูมและเตรียมสอบ O-NET", code: "ก23904", room: "ห้อง 311", color: "indigo" },
+      ],
+      friday: [
+        { name: "สังคมศึกษา 3", code: "ส23101", room: "ห้อง 311", color: "amber" },
+        { name: "ภาษาไทยพื้นฐาน 3", code: "ท23101", room: "ห้อง 311", color: "blue" },
+        { name: "คณิตศาสตร์พื้นฐาน 3", code: "ค23101", room: "ห้อง 314", color: "purple" },
+        { name: "ภาษาอังกฤษพื้นฐาน 3", code: "อ23101", room: "ห้อง 311", color: "teal" },
+        { name: "วิทยาศาสตร์ 3 (ทดลองวิทย์)", code: "ว23101", room: "LAB วิทย์ 2", color: "emerald" },
+        { name: "พลศึกษา (วอลเลย์บอล)", code: "พ23102", room: "โรงยิม", color: "rose" },
+        { name: "สรุปกิจกรรมประจำสัปดาห์", code: "ก23905", room: "ห้อง 311", color: "indigo" },
+      ],
+    },
+
+    // ===== ม.4 =====
+    4: {
+      monday: [
+        { name: "ฟิสิกส์ 1 (การเคลื่อนที่)", code: "ว31201", room: "LAB ฟิสิกส์", color: "emerald" },
+        { name: "ฟิสิกส์ 1 (ปฏิบัติการ)", code: "ว31201", room: "LAB ฟิสิกส์", color: "emerald" },
+        { name: "คณิตศาสตร์เพิ่มเติม 1", code: "ค31201", room: "ห้อง 412", color: "purple" },
+        { name: "ภาษาไทย 1", code: "ท31101", room: "ห้อง 411", color: "blue" },
+        { name: "ภาษาอังกฤษ 1", code: "อ31101", room: "ห้อง 411", color: "teal" },
+        { name: "สังคมศึกษา 1", code: "ส31101", room: "ห้อง 411", color: "amber" },
+        { name: "กิจกรรมแนะแนว ม.ปลาย", code: "ก31901", room: "ห้อง 411", color: "indigo" },
+      ],
+      tuesday: [
+        { name: "เคมี 1 (อะตอมและตารางธาตุ)", code: "ว31221", room: "LAB เคมี", color: "emerald" },
+        { name: "เคมี 1 (การทดลองเคมี)", code: "ว31221", room: "LAB เคมี", color: "emerald" },
+        { name: "คณิตศาสตร์พื้นฐาน 1", code: "ค31101", room: "ห้อง 412", color: "purple" },
+        { name: "ภาษาอังกฤษเชิงวิชาการ", code: "อ31201", room: "Sound LAB", color: "teal" },
+        { name: "วิทยาการคำนวณ ม.ปลาย", code: "ว31103", room: "ห้องคอม 1", color: "emerald" },
+        { name: "สุขศึกษาและพลศึกษา", code: "พ31101", room: "โรงยิม 2", color: "rose" },
+        { name: "กิจกรรมชุมนุมวิชาการ", code: "ก31902", room: "ห้อง 411", color: "indigo" },
+      ],
+      wednesday: [
+        { name: "ชีววิทยา 1 (เซลล์ของสิ่งมีชีวิต)", code: "ว31241", room: "LAB ชีวะ", color: "emerald" },
+        { name: "ชีววิทยา 1 (ส่องกล้องจุลทรรศน์)", code: "ว31241", room: "LAB ชีวะ", color: "emerald" },
+        { name: "คณิตศาสตร์เพิ่มเติม 1", code: "ค31201", room: "ห้อง 412", color: "purple" },
+        { name: "ประวัติศาสตร์ไทย 1", code: "ส31102", room: "ห้อง 411", color: "amber" },
+        { name: "ภาษาไทย 1", code: "ท31101", room: "ห้อง 411", color: "blue" },
+        { name: "การงานอาชีพและวิศวกรรม", code: "ง31101", room: "โรงฝึกงาน", color: "amber" },
+        { name: "กิจกรรมรักษาดินแดน (รด.)", code: "ก31903", room: "สนามฝึก รด.", color: "indigo" },
+      ],
+      thursday: [
+        { name: "คณิตศาสตร์เพิ่มเติม 1", code: "ค31201", room: "ห้อง 412", color: "purple" },
+        { name: "ภาษาอังกฤษ 1", code: "อ31101", room: "ห้อง 411", color: "teal" },
+        { name: "ฟิสิกส์ 1 (โจทย์ประยุกต์)", code: "ว31201", room: "LAB ฟิสิกส์", color: "emerald" },
+        { name: "เคมี 1 (สมบัติของธาตุ)", code: "ว31221", room: "LAB เคมี", color: "emerald" },
+        { name: "โลก ดาราศาสตร์และอวกาศ", code: "ว31104", room: "ห้องดาราศาสตร์", color: "indigo" },
+        { name: "ศิลปะและทัศนศิลป์", code: "ศ31101", room: "ห้องศิลป์", color: "rose" },
+        { name: "โฮมรูมและจริยธรรม", code: "ก31904", room: "ห้อง 411", color: "indigo" },
+      ],
+      friday: [
+        { name: "ชีววิทยา 1 (เคมีในสิ่งมีชีวิต)", code: "ว31241", room: "LAB ชีวะ", color: "emerald" },
+        { name: "คณิตศาสตร์พื้นฐาน 1", code: "ค31101", room: "ห้อง 412", color: "purple" },
+        { name: "สังคมศึกษา 1", code: "ส31101", room: "ห้อง 411", color: "amber" },
+        { name: "ภาษาไทย 1", code: "ท31101", room: "ห้อง 411", color: "blue" },
+        { name: "ภาษาอังกฤษเพื่อการสื่อสาร", code: "อ31202", room: "ห้อง 411", color: "teal" },
+        { name: "พลศึกษา (บาสเกตบอล)", code: "พ31102", room: "โรงยิม 2", color: "rose" },
+        { name: "กิจกรรมเพื่อสังคมและสาธารณะ", code: "ก31905", room: "หอประชุม", color: "indigo" },
+      ],
+    },
+
+    // ===== ม.5 =====
+    5: {
+      monday: [
+        { name: "ฟิสิกส์ 2 (คลื่น แสง เสียง)", code: "ว32201", room: "LAB ฟิสิกส์", color: "emerald" },
+        { name: "ฟิสิกส์ 2 (การทดลองคลื่น)", code: "ว32201", room: "LAB ฟิสิกส์", color: "emerald" },
+        { name: "คณิตศาสตร์เพิ่มเติม 2", code: "ค32201", room: "ห้อง 512", color: "purple" },
+        { name: "ภาษาไทย 2", code: "ท32101", room: "ห้อง 511", color: "blue" },
+        { name: "ภาษาอังกฤษ 2", code: "อ32101", room: "ห้อง 511", color: "teal" },
+        { name: "สังคมศึกษา 2", code: "ส32101", room: "ห้อง 511", color: "amber" },
+        { name: "กิจกรรมแนะแนวสายอาชีพ", code: "ก32901", room: "ห้อง 511", color: "indigo" },
+      ],
+      tuesday: [
+        { name: "เคมี 2 (แก๊สและของเหลว)", code: "ว32221", room: "LAB เคมี", color: "emerald" },
+        { name: "เคมี 2 (อัตราการเกิดปฏิกิริยา)", code: "ว32221", room: "LAB เคมี", color: "emerald" },
+        { name: "คณิตศาสตร์พื้นฐาน 2", code: "ค32101", room: "ห้อง 512", color: "purple" },
+        { name: "ภาษาอังกฤษเข้มข้น", code: "อ32201", room: "Sound LAB", color: "teal" },
+        { name: "การออกแบบเทคโนโลยีขั้นสูง", code: "ว32103", room: "ห้องคอม 2", color: "emerald" },
+        { name: "สุขศึกษาและพลศึกษา", code: "พ32101", room: "โรงยิม 2", color: "rose" },
+        { name: "กิจกรรมชมรมเฉพาะทาง", code: "ก32902", room: "ห้อง 511", color: "indigo" },
+      ],
+      wednesday: [
+        { name: "ชีววิทยา 2 (การสืบพันธุ์พืช)", code: "ว32241", room: "LAB ชีวะ", color: "emerald" },
+        { name: "ชีววิทยา 2 (โครงสร้างสัตว์)", code: "ว32241", room: "LAB ชีวะ", color: "emerald" },
+        { name: "คณิตศาสตร์เพิ่มเติม 2", code: "ค32201", room: "ห้อง 512", color: "purple" },
+        { name: "ประวัติศาสตร์สากล", code: "ส32102", room: "ห้อง 511", color: "amber" },
+        { name: "ภาษาไทย 2", code: "ท32101", room: "ห้อง 511", color: "blue" },
+        { name: "การศึกษาค้นคว้าอิสระ (IS 1)", code: "I32201", room: "ห้องสมุด", color: "indigo" },
+        { name: "กิจกรรมรักษาดินแดน (รด. ปี 2)", code: "ก32903", room: "สนามฝึก รด.", color: "indigo" },
+      ],
+      thursday: [
+        { name: "คณิตศาสตร์เพิ่มเติม 2", code: "ค32201", room: "ห้อง 512", color: "purple" },
+        { name: "ภาษาอังกฤษ 2", code: "อ32101", room: "ห้อง 511", color: "teal" },
+        { name: "ฟิสิกส์ 2 (ไฟฟ้าสถิต)", code: "ว32201", room: "LAB ฟิสิกส์", color: "emerald" },
+        { name: "เคมี 2 (สมดุลเคมี)", code: "ว32221", room: "LAB เคมี", color: "emerald" },
+        { name: "ดาราศาสตร์และอวกาศ 2", code: "ว32104", room: "ห้องดาราศาสตร์", color: "indigo" },
+        { name: "ดนตรีและศิลปะร่วมสมัย", code: "ศ32101", room: "ห้องดนตรี", color: "rose" },
+        { name: "โฮมรูมและคุณธรรม", code: "ก32904", room: "ห้อง 511", color: "indigo" },
+      ],
+      friday: [
+        { name: "ชีววิทยา 2 (พันธุศาสตร์)", code: "ว32241", room: "LAB ชีวะ", color: "emerald" },
+        { name: "คณิตศาสตร์พื้นฐาน 2", code: "ค32101", room: "ห้อง 512", color: "purple" },
+        { name: "สังคมศึกษา 2", code: "ส32101", room: "ห้อง 511", color: "amber" },
+        { name: "ภาษาไทย 2", code: "ท32101", room: "ห้อง 511", color: "blue" },
+        { name: "ภาษาอังกฤษเชิงวิเคราะห์", code: "อ32202", room: "ห้อง 511", color: "teal" },
+        { name: "พลศึกษา (ฟุตซอล)", code: "พ32102", room: "สนามกีฬา", color: "rose" },
+        { name: "กิจกรรมสาธารณประโยชน์", code: "ก32905", room: "ห้อง 511", color: "indigo" },
+      ],
+    },
+
+    // ===== ม.6 =====
+    6: {
+      monday: [
+        { name: "ฟิสิกส์ 3 (ไฟฟ้ากระแสสลับ)", code: "ว33201", room: "LAB ฟิสิกส์", color: "emerald" },
+        { name: "ฟิสิกส์ 3 (ฟิสิกส์นิวเคลียร์)", code: "ว33201", room: "LAB ฟิสิกส์", color: "emerald" },
+        { name: "คณิตศาสตร์ประยุกต์/แคลคูลัส", code: "ค33201", room: "ห้อง 612", color: "purple" },
+        { name: "ภาษาไทย 3", code: "ท33101", room: "ห้อง 611", color: "blue" },
+        { name: "ภาษาอังกฤษเตรียมสอบ TGAT", code: "อ33101", room: "ห้อง 611", color: "teal" },
+        { name: "สังคมศึกษา 3 (เศรษฐศาสตร์)", code: "ส33101", room: "ห้อง 611", color: "amber" },
+        { name: "แนะแนวเข้ามหาวิทยาลัย (TCAS)", code: "ก33901", room: "ห้อง 611", color: "indigo" },
+      ],
+      tuesday: [
+        { name: "เคมี 3 (กรด-เบส ไฟฟ้าเคมี)", code: "ว33221", room: "LAB เคมี", color: "emerald" },
+        { name: "เคมี 3 (เคมีอินทรีย์)", code: "ว33221", room: "LAB เคมี", color: "emerald" },
+        { name: "คณิตศาสตร์พื้นฐาน 3", code: "ค33101", room: "ห้อง 612", color: "purple" },
+        { name: "ภาษาอังกฤษเชิงวิชาการ (TPAT)", code: "อ33201", room: "Sound LAB", color: "teal" },
+        { name: "ปัญญาประดิษฐ์และ AI พื้นฐาน", code: "ว33103", room: "ห้องคอม 1", color: "emerald" },
+        { name: "สุขศึกษาและสมรรถภาพกาย", code: "พ33101", room: "ฟิตเนส/ยิม", color: "rose" },
+        { name: "กิจกรรมชุมนุมวิชาการ ม.6", code: "ก33902", room: "ห้อง 611", color: "indigo" },
+      ],
+      wednesday: [
+        { name: "ชีววิทยา 3 (ระบบนิเวศ)", code: "ว33241", room: "LAB ชีวะ", color: "emerald" },
+        { name: "ชีววิทยา 3 (วิวัฒนาการ)", code: "ว33241", room: "LAB ชีวะ", color: "emerald" },
+        { name: "คณิตศาสตร์ประยุกต์/สถิติ", code: "ค33201", room: "ห้อง 612", color: "purple" },
+        { name: "สังคมศึกษา 3 (การเมืองการปกครอง)", code: "ส33102", room: "ห้อง 611", color: "amber" },
+        { name: "ภาษาไทยเชิงวิชาการ", code: "ท33101", room: "ห้อง 611", color: "blue" },
+        { name: "สัมมนาโครงงานวิทยาศาสตร์ (IS 2)", code: "I33201", room: "ห้องประชุม", color: "indigo" },
+        { name: "กิจกรรมรักษาดินแดน (รด. ปี 3)", code: "ก33903", room: "สนามฝึก รด.", color: "indigo" },
+      ],
+      thursday: [
+        { name: "คณิตศาสตร์เข้มข้น A-Level", code: "ค33201", room: "ห้อง 612", color: "purple" },
+        { name: "ภาษาอังกฤษเพื่อการทดสอบ", code: "อ33101", room: "ห้อง 611", color: "teal" },
+        { name: "ฟิสิกส์ 3 (ตะลุยโจทย์ TPAT3)", code: "ว33201", room: "LAB ฟิสิกส์", color: "emerald" },
+        { name: "เคมี 3 (ตะลุยโจทย์เคมี)", code: "ว33221", room: "LAB เคมี", color: "emerald" },
+        { name: "ชีววิทยา 3 (ตะลุยโจทย์ชีวะ)", code: "ว33241", room: "LAB ชีวะ", color: "emerald" },
+        { name: "การนำเสนอและการสื่อสาร", code: "I33202", room: "ห้องประชุม", color: "rose" },
+        { name: "โฮมรูมและติดตาม Portfolio", code: "ก33904", room: "ห้อง 611", color: "indigo" },
+      ],
+      friday: [
+        { name: "ชีววิทยา 3 (พันธุศาสตร์ประยุกต์)", code: "ว33241", room: "LAB ชีวะ", color: "emerald" },
+        { name: "คณิตศาสตร์พื้นฐาน 3", code: "ค33101", room: "ห้อง 612", color: "purple" },
+        { name: "สังคมศึกษา 3 (ศาสนาสากล)", code: "ส33101", room: "ห้อง 611", color: "amber" },
+        { name: "ภาษาไทย 3", code: "ท33101", room: "ห้อง 611", color: "blue" },
+        { name: "ภาษาอังกฤษสำหรับการสอบเข้า", code: "อ33202", room: "ห้อง 611", color: "teal" },
+        { name: "พลศึกษา (ลีลาศ/โยคะ)", code: "พ33102", room: "โรงยิม 2", color: "rose" },
+        { name: "เตรียมความพร้อมสู่มหาวิทยาลัย", code: "ก33905", room: "หอประชุมใหญ่", color: "indigo" },
+      ],
+    },
   };
+
+  const selectedCurriculum = curriculumMap[year] || curriculumMap[2];
 
   const periodTimes = [
     { period: 1, startTime: "08:30", endTime: "09:20" },
@@ -2834,7 +3101,7 @@ export function generateDefaultSchedule(
   }
 
   for (const day of days) {
-    const daySubjects = subjectsByDay[day];
+    const daySubjects = selectedCurriculum[day];
     periodTimes.forEach((pt, idx) => {
       const subj = daySubjects[idx % daySubjects.length];
       const matchedTeacher =
@@ -2866,8 +3133,9 @@ export async function getClassSchedule(
   const norm = normalizeGradeRoom(gradeLevel) || "ม.2/1";
   const docId = norm.replace(/[^a-zA-Z0-9ก-๙]/g, "_");
 
+  // 1. Try exact room document (e.g. schedules/ม_2_1)
   try {
-    const snap = await withTimeout(getDoc(doc(database, "schedules", docId)), 4000);
+    const snap = await withTimeout(getDoc(doc(database, "schedules", docId)), 3000);
     if (snap.exists()) {
       const data = snap.data();
       if (Array.isArray(data.items) && data.items.length > 0) {
@@ -2875,9 +3143,25 @@ export async function getClassSchedule(
       }
     }
   } catch (err) {
-    console.warn("Could not fetch schedule from firestore, using default:", err);
+    console.warn("Could not fetch room schedule from firestore:", err);
   }
 
+  // 2. Try general grade level document (e.g. schedules/ม_2)
+  const year = extractGradeYear(norm);
+  const generalDocId = `ม_${year}`;
+  try {
+    const snapGen = await withTimeout(getDoc(doc(database, "schedules", generalDocId)), 3000);
+    if (snapGen.exists()) {
+      const data = snapGen.data();
+      if (Array.isArray(data.items) && data.items.length > 0) {
+        return data.items;
+      }
+    }
+  } catch (err) {
+    console.warn("Could not fetch general grade schedule from firestore:", err);
+  }
+
+  // 3. Fallback to generated default curriculum for that grade year
   return generateDefaultSchedule(norm, studentClasses);
 }
 

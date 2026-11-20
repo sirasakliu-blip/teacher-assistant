@@ -22,12 +22,13 @@ import {
 import { parseExcelOrCsv, exportToExcel } from "@/lib/excel-helper";
 import { CreateStudentDialog } from "@/components/create-student-dialog";
 import { TeacherProfileModal } from "@/components/teacher-profile-modal";
+import { AdminScheduleManager } from "@/components/admin-schedule-manager";
 
 export default function AdminDashboard() {
   const { profile, firebaseUser } = useAuth();
   const { toast } = useToast();
 
-  const [activeTab, setActiveTab] = useState<"invites" | "whitelist" | "users" | "import-students">("invites");
+  const [activeTab, setActiveTab] = useState<"invites" | "whitelist" | "users" | "schedules" | "import-students">("invites");
 
   // Tab 1: Teacher Invites state
   const [invites, setInvites] = useState<TeacherInvite[]>([]);
@@ -768,6 +769,18 @@ export default function AdminDashboard() {
           </button>
 
           <button
+            onClick={() => setActiveTab("schedules")}
+            className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition cursor-pointer ${
+              activeTab === "schedules"
+                ? "border-emerald-600 text-emerald-700 font-semibold"
+                : "border-transparent text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            <i className="fa-solid fa-calendar-days" />
+            <span>จัดการตารางเรียน (ม.1 - ม.6)</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab("import-students")}
             className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition ${
               activeTab === "import-students"
@@ -1501,6 +1514,10 @@ export default function AdminDashboard() {
               )}
             </div>
           </div>
+        )}
+
+        {activeTab === "schedules" && (
+          <AdminScheduleManager />
         )}
 
         {activeTab === "import-students" && (
