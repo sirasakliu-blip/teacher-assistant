@@ -11,7 +11,7 @@ export default function Register() {
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<UserRole>("student");
+  const [role, setRole] = useState<UserRole>("teacher");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -66,42 +66,30 @@ export default function Register() {
             เริ่มต้นใช้งานแคมปัสดิจิทัลของคุณวันนี้
           </p>
 
-          <div className="grid grid-cols-3 gap-2 mb-6">
-            <button
-              type="button"
-              onClick={() => setRole("student")}
-              className={`rounded-xl p-3 border-2 transition-all duration-200 flex flex-col items-center gap-1.5 ${
-                role === "student"
-                  ? "border-primary bg-primary/10 text-primary shadow-md"
-                  : "border-border bg-background/40 text-muted-foreground hover:border-primary/40"
-              }`}
-            >
-              <i className="fa-solid fa-user-graduate text-lg" />
-              <span className="text-xs font-semibold">นักเรียน</span>
-            </button>
+          <div className="grid grid-cols-2 gap-3 mb-6">
             <button
               type="button"
               onClick={() => setRole("teacher")}
-              className={`rounded-xl p-3 border-2 transition-all duration-200 flex flex-col items-center gap-1.5 ${
+              className={`rounded-xl p-3.5 border-2 transition-all duration-200 flex flex-col items-center gap-2 ${
                 role === "teacher"
                   ? "border-primary bg-primary/10 text-primary shadow-md"
                   : "border-border bg-background/40 text-muted-foreground hover:border-primary/40"
               }`}
             >
-              <i className="fa-solid fa-chalkboard-user text-lg" />
-              <span className="text-xs font-semibold">ครู</span>
+              <i className="fa-solid fa-chalkboard-user text-xl" />
+              <span className="text-sm font-semibold">ครู</span>
             </button>
             <button
               type="button"
               onClick={() => setRole("parent")}
-              className={`rounded-xl p-3 border-2 transition-all duration-200 flex flex-col items-center gap-1.5 ${
+              className={`rounded-xl p-3.5 border-2 transition-all duration-200 flex flex-col items-center gap-2 ${
                 role === "parent"
                   ? "border-primary bg-primary/10 text-primary shadow-md"
                   : "border-border bg-background/40 text-muted-foreground hover:border-primary/40"
               }`}
             >
-              <i className="fa-solid fa-people-roof text-lg" />
-              <span className="text-xs font-semibold">ผู้ปกครอง</span>
+              <i className="fa-solid fa-people-roof text-xl" />
+              <span className="text-sm font-semibold">ผู้ปกครอง</span>
             </button>
           </div>
 
