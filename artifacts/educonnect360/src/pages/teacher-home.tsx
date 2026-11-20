@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { createClass, getClassesForTeacher } from "@/lib/firestore";
 import { CLASS_COVERS, coverGradient } from "@/lib/covers";
 import { TeacherNav } from "@/components/teacher-nav";
+import { CreateStudentDialog } from "@/components/create-student-dialog";
 import type { Class, ClassCover } from "@/types";
 
 export default function TeacherHome() {
@@ -13,6 +14,7 @@ export default function TeacherHome() {
   const [classes, setClasses] = useState<Class[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [showAddStudent, setShowAddStudent] = useState(false);
 
   async function refresh() {
     if (!profile) return;
@@ -51,12 +53,20 @@ export default function TeacherHome() {
               จัดการห้องเรียนและเช็คชื่อนักเรียนแบบเรียลไทม์
             </p>
           </div>
-          <button
-            onClick={() => setShowCreate(true)}
-            className="px-5 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-all duration-300 shadow-lg shadow-primary/25 hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-2"
-          >
-            <i className="fa-solid fa-plus" /> สร้างห้องเรียน
-          </button>
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={() => setShowAddStudent(true)}
+              className="px-4 py-3 rounded-xl border border-primary/30 bg-primary/10 hover:bg-primary/20 text-primary font-semibold text-sm transition flex items-center gap-2"
+            >
+              <i className="fa-solid fa-user-plus" /> เพิ่มบัญชีนักเรียน
+            </button>
+            <button
+              onClick={() => setShowCreate(true)}
+              className="px-5 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-all duration-300 shadow-lg shadow-primary/25 hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-2"
+            >
+              <i className="fa-solid fa-plus" /> สร้างห้องเรียน
+            </button>
+          </div>
         </div>
 
         {loading ? (
@@ -223,6 +233,13 @@ function CreateClassModal({
           </button>
         </form>
       </div>
+
+      <CreateStudentDialog
+        open={showAddStudent}
+        onClose={() => setShowAddStudent(false)}
+        onSuccess={() => refresh()}
+      />
+    </div>
     </div>
   );
 }

@@ -13,6 +13,7 @@ import {
 import { coverGradient } from "@/lib/covers";
 import { RiskTable } from "@/components/risk-table";
 import { TeacherAssignmentsPanel } from "@/components/assignments-panel";
+import { CreateStudentDialog } from "@/components/create-student-dialog";
 import type { Attendance, Class, ClassSession } from "@/types";
 
 type TabId = "overview" | "assignments";
@@ -28,6 +29,7 @@ export default function TeacherClass() {
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [tab, setTab] = useState<TabId>("overview");
+  const [showAddStudent, setShowAddStudent] = useState(false);
 
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
@@ -121,8 +123,17 @@ export default function TeacherClass() {
         <Link href="/teacher" className="flex items-center gap-2 text-foreground font-semibold text-sm hover:text-primary transition-colors">
           <i className="fa-solid fa-arrow-left" /> ห้องเรียนของฉัน
         </Link>
-        <div className={`px-4 py-1.5 rounded-full bg-gradient-to-br ${coverGradient(cls.cover)} text-white text-xs font-bold tracking-widest font-mono`}>
-          รหัสเข้าห้อง: {cls.joinCode}
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={() => setShowAddStudent(true)}
+            className="px-3.5 py-1.5 rounded-full bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold transition flex items-center gap-1.5"
+          >
+            <i className="fa-solid fa-user-plus" />
+            + เพิ่มนักเรียนเข้าห้อง
+          </button>
+          <div className={`px-4 py-1.5 rounded-full bg-gradient-to-br ${coverGradient(cls.cover)} text-white text-xs font-bold tracking-widest font-mono`}>
+            รหัสเข้าห้อง: {cls.joinCode}
+          </div>
         </div>
       </nav>
 
@@ -245,6 +256,17 @@ export default function TeacherClass() {
         </>
         )}
       </main>
+
+      <CreateStudentDialog
+        open={showAddStudent}
+        onClose={() => setShowAddStudent(false)}
+        classId={cls.id}
+        defaultClassName={cls.gradeLevel}
+        onSuccess={async () => {
+          const found = await getClassById(classId);
+          setCls(found);
+        }}
+      />
     </div>
   );
 }

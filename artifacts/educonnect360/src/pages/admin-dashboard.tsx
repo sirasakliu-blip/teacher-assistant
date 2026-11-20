@@ -16,6 +16,7 @@ import {
   toggleParentTokenStatus,
   resetParentViewToken,
 } from "@/lib/firestore";
+import { CreateStudentDialog } from "@/components/create-student-dialog";
 
 export default function AdminDashboard() {
   const { profile, firebaseUser } = useAuth();
@@ -51,6 +52,7 @@ export default function AdminDashboard() {
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [togglingToken, setTogglingToken] = useState<string | null>(null);
   const [resettingTokenForStudent, setResettingTokenForStudent] = useState<string | null>(null);
+  const [showCreateStudent, setShowCreateStudent] = useState(false);
 
   // Subscribe to Teacher Invites
   useEffect(() => {
@@ -747,6 +749,13 @@ export default function AdminDashboard() {
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-slate-800">รายชื่อผู้ใช้ทั้งหมดในระบบ</span>
                   <span className="text-xs text-slate-400">({users.length} คน)</span>
+                  <button
+                    onClick={() => setShowCreateStudent(true)}
+                    className="ml-2 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition shadow-sm flex items-center gap-1.5"
+                  >
+                    <i className="fa-solid fa-user-plus" />
+                    + สร้างบัญชีนักเรียนใหม่
+                  </button>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="relative">
@@ -932,6 +941,12 @@ export default function AdminDashboard() {
           </div>
         )}
       </main>
+
+      <CreateStudentDialog
+        open={showCreateStudent}
+        onClose={() => setShowCreateStudent(false)}
+        onSuccess={() => loadUsersAndTokens()}
+      />
     </div>
   );
 }

@@ -2,23 +2,21 @@ import { useState, useEffect, type FormEvent } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import type { UserRole } from "@/types";
 
 export default function Register() {
   const { register, firebaseUser, profile, loading } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [displayName, setDisplayName] = useState("");
-  const [studentId, setStudentId] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<UserRole>("student");
   const [inviteCode, setInviteCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!loading && firebaseUser && profile) {
-      if (profile.role === "teacher") setLocation("/teacher");
+      if (profile.role === "admin") setLocation("/admin");
+      else if (profile.role === "teacher") setLocation("/teacher");
       else if (profile.role === "parent") setLocation("/parent");
       else setLocation("/student");
     }
@@ -27,73 +25,54 @@ export default function Register() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
 
-    // 1. Student Submission
-    if (role === "student") {
-      const cleanStudentId = studentId.trim();
-      if (!cleanStudentId) {
-        toast({
-          variant: "destructive",
-          title: "กรุณากรอกรหัสนักเรียน",
-          description: "รหัสนักเรียนจำเป็นสำหรับการสร้างบัญชีและเข้าสู่ระบบ",
-        });
-        return;
-      }
-
-      setSubmitting(true);
-      try {
-        await register("", "", displayName, "student", { studentId: cleanStudentId });
-        toast({ title: "สร้างบัญชีนักเรียนสำเร็จ", description: `ยินดีต้อนรับ ${displayName}` });
-        setLocation("/student");
-      } catch (err) {
-        toast({
-          variant: "destructive",
-          title: "สมัครสมาชิกไม่สำเร็จ",
-          description: err instanceof Error ? err.message : "กรุณาลองใหม่อีกครั้ง",
-        });
-      } finally {
-        setSubmitting(false);
-      }
+    if (!displayName.trim()) {
+      toast({
+        variant: "destructive",
+        title: "กรุณากรอกชื่อ-นามสกุล",
+      });
       return;
     }
 
-    // 2. Teacher Submission
-    if (role === "teacher") {
-      if (!inviteCode.trim()) {
-        toast({
-          variant: "destructive",
-          title: "กรุณากรอกรหัสลงทะเบียนบุคลากร",
-          description: "สำหรับบทบาทครู จำเป็นต้องระบุรหัสลงทะเบียนที่ได้รับจากผู้ดูแลระบบ",
-        });
-        return;
-      }
-
-      setSubmitting(true);
-      try {
-        await register(email, password, displayName, "teacher", { inviteCode: inviteCode.trim() });
-        toast({ title: "สร้างบัญชีสำเร็จ", description: "ยินดีต้อนรับสู่ EduConnect360" });
-        setLocation("/teacher");
-      } catch (err) {
-        toast({
-          variant: "destructive",
-          title: "สมัครสมาชิกไม่สำเร็จ",
-          description: err instanceof Error ? err.message : "กรุณาลองใหม่อีกครั้ง",
-        });
-      } finally {
-        setSubmitting(false);
-      }
+    if (!email.trim()) {
+      toast({
+        variant: "destructive",
+        title: "กรุณากรอกอีเมล",
+      });
       return;
     }
 
-    // 3. Parent Submission
+    if (password.length < 6) {
+      toast({
+        variant: "destructive",
+        title: "รหัสผ่านสั้นเกินไป",
+        description: "รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร",
+      });
+      return;
+    }
+
+    if (!inviteCode.trim()) {
+      toast({
+        variant: "destructive",
+        title: "กรุณากรอกรหัสลงทะเบียนบุคลากร",
+        description: "จำเป็นต้องระบุรหัสลงทะเบียนที่ได้รับจากผู้ดูแลระบบสถานศึกษา",
+      });
+      return;
+    }
+
     setSubmitting(true);
     try {
-      await register(email, password, displayName, "parent");
-      toast({ title: "สร้างบัญชีสำเร็จ", description: "ยินดีต้อนรับสู่ EduConnect360" });
-      setLocation("/parent");
+      await register(email, password, displayName, "teacher", {
+        inviteCode: inviteCode.trim(),
+      });
+      toast({
+        title: "ลงทะเบียนบุคลากรสำเร็จ",
+        description: `ยินดีต้อนรับ ${displayName} สู่ระบบ EduConnect360`,
+      });
+      setLocation("/teacher");
     } catch (err) {
       toast({
         variant: "destructive",
-        title: "สมัครสมาชิกไม่สำเร็จ",
+        title: "ลงทะเบียนไม่สำเร็จ",
         description: err instanceof Error ? err.message : "กรุณาลองใหม่อีกครั้ง",
       });
     } finally {
@@ -120,151 +99,117 @@ export default function Register() {
         </Link>
 
         <div className="glass-panel rounded-3xl p-8 md:p-10">
-          <h1 className="text-2xl font-bold text-foreground mb-1">สร้างบัญชีใหม่</h1>
-          <p className="text-muted-foreground text-sm mb-8">
-            เริ่มต้นใช้งานแคมปัสดิจิทัลของคุณวันนี้
-          </p>
-
-          {/* เหลือเฉพาะ 2 บทบาทหลัก: นักเรียน และ ครู */}
-          <div className="grid grid-cols-2 gap-3 mb-6">
-            <button
-              type="button"
-              onClick={() => setRole("student")}
-              className={`rounded-2xl p-3.5 border-2 transition-all duration-200 flex flex-col items-center gap-1.5 ${
-                role === "student"
-                  ? "border-primary bg-primary/10 text-primary shadow-md shadow-primary/20 scale-[1.01]"
-                  : "border-border bg-background/40 text-muted-foreground hover:border-primary/40"
-              }`}
-            >
-              <i className="fa-solid fa-user-graduate text-xl" />
-              <span className="text-sm font-semibold">นักเรียน</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setRole("teacher")}
-              className={`rounded-2xl p-3.5 border-2 transition-all duration-200 flex flex-col items-center gap-1.5 ${
-                role === "teacher"
-                  ? "border-primary bg-primary/10 text-primary shadow-md shadow-primary/20 scale-[1.01]"
-                  : "border-border bg-background/40 text-muted-foreground hover:border-primary/40"
-              }`}
-            >
-              <i className="fa-solid fa-chalkboard-user text-xl" />
-              <span className="text-sm font-semibold">ครู</span>
-            </button>
+          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary w-fit text-xs font-semibold mb-3">
+            <i className="fa-solid fa-chalkboard-user" /> สำหรับครูและบุคลากรทางการศึกษา
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <h1 className="text-2xl font-bold text-foreground mb-1">
+            ลงทะเบียนสำหรับครูและบุคลากร
+          </h1>
+          <p className="text-muted-foreground text-sm mb-6">
+            กรอกข้อมูลและรหัสลงทะเบียนบุคลากรเพื่อเข้าใช้งานระบบ
+          </p>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-semibold text-foreground mb-2">
-                ชื่อ-นามสกุล
+              <label className="block text-sm font-semibold text-foreground mb-1.5">
+                ชื่อ-นามสกุล (พร้อมคำนำหน้า)
               </label>
               <input
                 type="text"
                 required
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="สมชาย ใจดี"
+                placeholder="เช่น อาจารย์สมคิด จิตมั่นคง"
                 className="w-full px-4 py-3 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-ring text-foreground placeholder:text-muted-foreground/70"
               />
             </div>
 
-            {/* If Student: Only Student ID */}
-            {role === "student" ? (
-              <div className="animate-fade-in-down transition-all duration-200">
-                <label className="block text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
-                  <i className="fa-solid fa-id-badge text-primary" />
-                  รหัสนักเรียน
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    required
-                    value={studentId}
-                    onChange={(e) => setStudentId(e.target.value.replace(/\s+/g, ""))}
-                    placeholder="กรอกรหัสนักเรียน เช่น 67105"
-                    className="w-full px-4 py-3 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground font-mono placeholder:text-muted-foreground/60 text-base"
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1.5">
-                  <i className="fa-solid fa-circle-info text-primary" />
-                  ไม่ต้องกรอกอีเมลและรหัสผ่าน ระบบจะผูกบัญชีเข้ากับรหัสนักเรียนนี้โดยอัตโนมัติ
-                </p>
-              </div>
-            ) : (
-              /* If Teacher or Parent: Email & Password */
-              <div className="space-y-4 animate-fade-in-down transition-all duration-200">
-                <div>
-                  <label className="block text-sm font-semibold text-foreground mb-2">
-                    อีเมล
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@school.ac.th"
-                    className="w-full px-4 py-3 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-ring text-foreground placeholder:text-muted-foreground/70"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-foreground mb-2">
-                    รหัสผ่าน
-                  </label>
-                  <input
-                    type="password"
-                    required
-                    minLength={6}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="อย่างน้อย 6 ตัวอักษร"
-                    className="w-full px-4 py-3 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-ring text-foreground placeholder:text-muted-foreground/70"
-                  />
-                </div>
+            <div>
+              <label className="block text-sm font-semibold text-foreground mb-1.5">
+                อีเมล
+              </label>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="teacher@school.ac.th"
+                className="w-full px-4 py-3 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-ring text-foreground placeholder:text-muted-foreground/70"
+              />
+            </div>
 
-                {/* Conditional Input for Teacher Invite Code */}
-                {role === "teacher" && (
-                  <div className="pt-1">
-                    <label className="block text-sm font-semibold text-foreground mb-2 flex items-center justify-between">
-                      <span className="flex items-center gap-1.5">
-                        <i className="fa-solid fa-key text-primary" />
-                        รหัสลงทะเบียนบุคลากร (Teacher Invite Code)
-                      </span>
-                      <span className="text-xs font-medium text-destructive">* จำเป็น</span>
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        required={role === "teacher"}
-                        value={inviteCode}
-                        onChange={(e) => setInviteCode(e.target.value.toUpperCase().replace(/\s+/g, ""))}
-                        placeholder="เช่น TCH-XXXX-XX (ขอรับได้จากผู้ดูแลระบบ)"
-                        className="w-full px-4 py-3 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground font-mono placeholder:text-muted-foreground/60 uppercase tracking-wider"
-                      />
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1.5">
-                      <i className="fa-solid fa-circle-info text-primary shrink-0" />
-                      สำหรับบุคลากรทางการศึกษาเท่านั้น รหัสนี้ใช้ได้เพียงครั้งเดียว
-                    </p>
-                  </div>
-                )}
+            <div>
+              <label className="block text-sm font-semibold text-foreground mb-1.5">
+                รหัสผ่าน (อย่างน้อย 6 ตัวอักษร)
+              </label>
+              <input
+                type="password"
+                required
+                minLength={6}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full px-4 py-3 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-ring text-foreground placeholder:text-muted-foreground/70"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-foreground mb-1.5 flex items-center justify-between">
+                <span>รหัสลงทะเบียนบุคลากร (Teacher Invite Code)</span>
+                <span className="text-[11px] font-normal text-muted-foreground">ใช้ได้ 1 ครั้ง</span>
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  required
+                  value={inviteCode}
+                  onChange={(e) => setInviteCode(e.target.value.toUpperCase().replace(/\s+/g, ""))}
+                  placeholder="เช่น TCH-XXXX-XX"
+                  className="w-full px-4 py-3 rounded-xl bg-primary/5 border border-primary/30 focus:outline-none focus:ring-2 focus:ring-primary text-foreground font-mono uppercase tracking-wider placeholder:normal-case placeholder:tracking-normal placeholder:font-sans placeholder:text-muted-foreground/60"
+                />
+                <i className="fa-solid fa-key absolute right-3.5 top-3.5 text-muted-foreground/60 text-sm" />
               </div>
-            )}
+              <p className="text-xs text-muted-foreground mt-1.5">
+                ขอรับรหัสได้จากผู้ดูแลระบบสถานศึกษา (Admin)
+              </p>
+            </div>
+
             <button
               type="submit"
               disabled={submitting}
-              className="w-full py-3.5 rounded-xl bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition-all duration-300 shadow-lg shadow-primary/25 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-60 disabled:hover:translate-y-0 flex items-center justify-center gap-2"
+              className="w-full py-3.5 rounded-xl bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition-all duration-300 shadow-lg shadow-primary/25 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-60 disabled:hover:translate-y-0 flex items-center justify-center gap-2 mt-4"
             >
               {submitting ? (
-                <i className="fa-solid fa-circle-notch fa-spin" />
+                <>
+                  <i className="fa-solid fa-circle-notch fa-spin text-sm" />
+                  กำลังลงทะเบียน...
+                </>
               ) : (
                 <>
-                  สมัครสมาชิก <i className="fa-solid fa-arrow-right text-xs" />
+                  ยืนยันการลงทะเบียน <i className="fa-solid fa-arrow-right text-xs" />
                 </>
               )}
             </button>
           </form>
 
-          <p className="text-center text-sm text-muted-foreground mt-8">
+          {/* Student & Parent Notice */}
+          <div className="mt-6 p-3.5 rounded-2xl bg-muted/60 border border-border/80 text-xs text-muted-foreground space-y-1.5">
+            <p className="flex items-start gap-2">
+              <i className="fa-solid fa-user-graduate text-primary mt-0.5" />
+              <span>
+                <strong>สำหรับนักเรียน:</strong> บัญชีจะถูกสร้างโดยครูประจำชั้น กรุณารับรหัสนักเรียนและรหัสผ่านจากครู
+              </span>
+            </p>
+            <p className="flex items-start gap-2">
+              <i className="fa-solid fa-comment-dots text-emerald-600 mt-0.5" />
+              <span>
+                <strong>สำหรับผู้ปกครอง:</strong> ไม่ต้องสร้างบัญชี สามารถติดตามผลการเรียนและการเข้าเรียนได้ทาง LINE Official Account
+              </span>
+            </p>
+          </div>
+
+          <p className="text-center text-sm text-muted-foreground mt-6">
             มีบัญชีอยู่แล้ว?{" "}
             <Link href="/login" className="text-primary font-semibold hover:underline">
               เข้าสู่ระบบ

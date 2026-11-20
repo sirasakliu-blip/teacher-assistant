@@ -22,7 +22,14 @@ import {
   where,
   type Unsubscribe,
 } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { initializeApp, deleteApp } from "firebase/app";
+import {
+  getAuth,
+  createUserWithEmailAndPassword,
+  updateProfile,
+  signOut,
+} from "firebase/auth";
+import { db, firebaseConfig } from "@/lib/firebase";
 import type {
   AdminWhitelist,
   Assignment,
@@ -1739,5 +1746,128 @@ export async function getParentLineLink(lineUserId: string): Promise<ParentLineL
     studentId: data.studentId,
     studentName: data.studentName,
     linkedAt: tsToISO(data.linkedAt),
+  };
+}
+
+/** Enrolls an existing student into a class's studentIds roster. */
+export async function enrollStudentInClass(classId: string, studentId: string): Promise<void> {
+  const database = requireDb();
+  const classRef = doc(database, "classes", classId);
+  const snap = await getDoc(classRef);
+  if (!snap.exists()) return;
+  const currentStudentIds = (snap.data()?.studentIds as string[]) || [];
+  if (!currentStudentIds.includes(studentId)) {
+    await updateDoc(classRef, {
+      studentIds: [...currentStudentIds, studentId],
+      updatedAt: serverTimestamp(),
+    });
+  }
+}
+
+/**
+ * Creates a new student account in Firebase Auth and Cloud Firestore by a Teacher or Admin.
+ * Uses a Secondary Firebase App Instance to ensure the currently logged in Teacher/Admin
+ * session is NOT signed out or interrupted.
+ */
+export async function createStudentAccountByStaff(input: {
+  studentId: string;
+  fullName: string;
+  className?: string;
+  password?: string;
+  classIdToEnroll?: string;
+}): Promise<User> {
+  const cleanStudentId = input.studentId.trim();
+  const cleanFullName = input.fullName.trim();
+  const rawPassword = input.password?.trim();
+  const password = rawPassword && rawPassword.length >= 6 ? rawPassword : cleanStudentId;
+
+  if (!cleanStudentId) throw new Error("กรุณากรอกรหัสนักเรียน");
+  if (!cleanFullName) throw new Error("กรุณากรอกชื่อ-นามสกุลนักเรียน");
+  if (password.length < 6) throw new Error("รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร");
+
+  const syntheticEmail = `${cleanStudentId}@student.school.local`;
+
+  // Secondary Firebase App Instance to protect current teacher/admin login session
+  const secondaryAppName = `SecondaryAuth_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+  const secondaryApp = initializeApp(firebaseConfig, secondaryAppName);
+  const secondaryAuth = getAuth(secondaryApp);
+
+  let newUid = "";
+  try {
+    const cred = await createUserWithEmailAndPassword(secondaryAuth, syntheticEmail, password);
+    newUid = cred.user.uid;
+    await updateProfile(cred.user, { displayName: cleanFullName });
+    await signOut(secondaryAuth);
+  } catch (authError: any) {
+    if (authError?.code === "auth/email-already-in-use") {
+      throw new Error(`รหัสนักเรียน "${cleanStudentId}" มีอยู่ในระบบแล้ว`);
+    }
+    throw authError;
+  } finally {
+    try {
+      await deleteApp(secondaryApp);
+    } catch {
+      // ignore
+    }
+  }
+
+  const normalized = normalizeThaiName(cleanFullName);
+  const parentViewToken = generateParentViewToken();
+  const database = requireDb();
+
+  // 1. Create Parent View Token
+  await setDoc(doc(database, "parent_view_tokens", parentViewToken), {
+    token: parentViewToken,
+    studentUid: newUid,
+    studentId: cleanStudentId,
+    studentName: cleanFullName,
+    isActive: true,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+
+  // 2. Create User document in users collection
+  const userRef = doc(database, "users", newUid);
+  await setDoc(userRef, {
+    uid: newUid,
+    email: syntheticEmail,
+    displayName: cleanFullName,
+    fullName: cleanFullName,
+    searchName: normalized.searchName,
+    normalizedFullName: normalized.normalizedFullName,
+    role: "student",
+    studentId: cleanStudentId,
+    gradeLevel: input.className?.trim() || "มัธยมศึกษา",
+    parentViewToken,
+    linkedStudentIds: [],
+    photoURL: null,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+
+  // 3. Optionally enroll in specified class
+  if (input.classIdToEnroll) {
+    await enrollStudentInClass(input.classIdToEnroll, newUid);
+  }
+
+  // 4. Pre-aggregate summary for sub-second LINE Webhook & Parent View lookup
+  await syncStudentSummary(newUid);
+
+  return {
+    id: newUid,
+    uid: newUid,
+    email: syntheticEmail,
+    displayName: cleanFullName,
+    fullName: cleanFullName,
+    searchName: normalized.searchName,
+    normalizedFullName: normalized.normalizedFullName,
+    role: "student",
+    studentId: cleanStudentId,
+    gradeLevel: input.className?.trim() || "มัธยมศึกษา",
+    parentViewToken,
+    linkedStudentIds: [],
+    photoURL: null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   };
 }

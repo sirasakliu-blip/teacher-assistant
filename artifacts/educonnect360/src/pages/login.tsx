@@ -40,12 +40,14 @@ export default function Login() {
         if (!cleanId) {
           throw new Error("กรุณากรอกรหัสนักเรียน");
         }
+        if (!password) {
+          throw new Error("กรุณากรอกรหัสผ่าน");
+        }
         const syntheticEmail = `${cleanId}@student.school.local`;
-        const syntheticPassword = `STD_PASS_${cleanId}`;
         try {
-          await login(syntheticEmail, syntheticPassword);
+          await login(syntheticEmail, password);
         } catch {
-          throw new Error("ไม่พบรหัสนักเรียนนี้ในระบบ กรุณาสมัครสมาชิกก่อนเข้าใช้งาน");
+          throw new Error("รหัสนักเรียนหรือรหัสผ่านไม่ถูกต้อง กรุณาตรวจสอบหรือติดต่อครูประจำชั้น");
         }
       } else {
         await login(email, password);
@@ -114,13 +116,13 @@ export default function Login() {
 
           <form onSubmit={handleSubmit} className="space-y-5">
             {loginRole === "student" ? (
-              /* Student Login Form: Only Student ID */
-              <div className="animate-fade-in-down transition-all duration-200">
-                <label className="block text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
-                  <i className="fa-solid fa-id-badge text-primary" />
-                  รหัสนักเรียน
-                </label>
-                <div className="relative">
+              /* Student Login Form: Student ID & Password */
+              <div className="space-y-4 animate-fade-in-down transition-all duration-200">
+                <div>
+                  <label className="block text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+                    <i className="fa-solid fa-id-badge text-primary" />
+                    รหัสนักเรียน
+                  </label>
                   <input
                     type="text"
                     required
@@ -131,9 +133,24 @@ export default function Login() {
                     autoFocus
                   />
                 </div>
-                <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1.5">
+                <div>
+                  <label className="block text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+                    <i className="fa-solid fa-lock text-primary" />
+                    รหัสผ่าน
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full px-4 py-3 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground placeholder:text-muted-foreground/60 text-base"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1.5">
                   <i className="fa-solid fa-circle-info text-primary" />
-                  เข้าสู่ระบบสะดวกรวดเร็วด้วยรหัสนักเรียนโดยไม่ต้องใช้อีเมล
+                  สำหรับนักเรียน: กรุณาใช้รหัสผ่านที่ได้รับจากครูประจำชั้น
                 </p>
               </div>
             ) : (
