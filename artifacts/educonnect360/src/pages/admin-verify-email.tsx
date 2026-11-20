@@ -1,14 +1,34 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 
 export default function AdminVerifyEmail() {
-  const { firebaseUser, reloadUser, resendVerificationEmail, logout } = useAuth();
+  const { firebaseUser, reloadUser, resendVerificationEmail, logout, loading } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [checking, setChecking] = useState(false);
   const [resending, setResending] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  useEffect(() => {
+    // If not loading and user is not logged in, navigate to login page
+    if (!loading && !firebaseUser) {
+      setLocation("/login");
+    }
+  }, [loading, firebaseUser, setLocation]);
+
+  async function handleLogoutAndGoLogin() {
+    setLoggingOut(true);
+    try {
+      await logout();
+    } catch (err) {
+      console.warn("Logout error:", err);
+    } finally {
+      setLoggingOut(false);
+      setLocation("/login");
+    }
+  }
 
   async function handleCheckStatus() {
     setChecking(true);
@@ -132,14 +152,21 @@ export default function AdminVerifyEmail() {
           </div>
 
           <div className="pt-6 mt-6 border-t border-border/40 flex items-center justify-between text-xs text-muted-foreground">
-            <Link href="/login" className="hover:text-primary transition-colors">
-              <i className="fa-solid fa-arrow-left mr-1" /> หน้าเข้าสู่ระบบ
-            </Link>
             <button
-              onClick={logout}
-              className="hover:text-destructive transition-colors flex items-center gap-1"
+              type="button"
+              disabled={loggingOut}
+              onClick={handleLogoutAndGoLogin}
+              className="hover:text-primary transition-colors flex items-center gap-1.5 cursor-pointer bg-transparent border-0 p-0 text-xs text-muted-foreground disabled:opacity-50"
             >
-              <i className="fa-solid fa-right-from-bracket" /> ออกจากระบบ
+              <i className="fa-solid fa-arrow-left" /> หน้าเข้าสู่ระบบ
+            </button>
+            <button
+              type="button"
+              disabled={loggingOut}
+              onClick={handleLogoutAndGoLogin}
+              className="hover:text-destructive transition-colors flex items-center gap-1.5 cursor-pointer bg-transparent border-0 p-0 text-xs text-muted-foreground disabled:opacity-50"
+            >
+              <i className="fa-solid fa-right-from-bracket" /> {loggingOut ? "กำลังออกจากระบบ..." : "ออกจากระบบ"}
             </button>
           </div>
         </div>
