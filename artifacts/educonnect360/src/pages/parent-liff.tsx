@@ -1048,16 +1048,28 @@ export default function ParentLiff() {
                     <div className="divide-y divide-slate-100 space-y-3">
                       {announcements.map((ann) => (
                         <div key={ann.id} className="pt-3 first:pt-0 space-y-1.5">
-                          <div className="flex items-center justify-between gap-2">
-                            <span
-                              className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                                ann.priority === "urgent"
-                                  ? "bg-rose-100 text-rose-700"
-                                  : "bg-slate-100 text-slate-600"
-                              }`}
-                            >
-                              {ann.priority === "urgent" ? "🚨 ประกาศด่วน" : "ข่าวประชาสัมพันธ์"}
-                            </span>
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                                  ann.priority === "urgent"
+                                    ? "bg-rose-100 text-rose-700"
+                                    : "bg-slate-100 text-slate-600"
+                                }`}
+                              >
+                                {ann.priority === "urgent" ? "🚨 ประกาศด่วน" : "ข่าวประชาสัมพันธ์"}
+                              </span>
+                              {ann.gradeLevel && (
+                                <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-teal-100 text-teal-800">
+                                  ห้อง {ann.gradeLevel}
+                                </span>
+                              )}
+                              {ann.className && (
+                                <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-100 text-indigo-800">
+                                  {ann.className}
+                                </span>
+                              )}
+                            </div>
                             <span className="text-[11px] text-slate-400">{ann.createdAt}</span>
                           </div>
                           <p className="font-bold text-slate-900 text-sm">{ann.title}</p>
@@ -1108,18 +1120,41 @@ export default function ParentLiff() {
                       {teacherContacts.map((t, idx) => (
                         <div
                           key={idx}
-                          className="bg-slate-50/80 rounded-2xl p-4 border border-slate-200/80 space-y-3"
+                          className={`rounded-2xl p-4 border space-y-3 transition ${
+                            t.isAdvisor
+                              ? "bg-emerald-50/70 border-emerald-300 ring-2 ring-emerald-200/50 shadow-xs"
+                              : "bg-slate-50/80 border-slate-200/80"
+                          }`}
                         >
                           <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center text-lg font-bold">
-                              <i className="fa-solid fa-chalkboard-user" />
+                            <div
+                              className={`w-12 h-12 rounded-2xl flex items-center justify-center text-lg font-bold shrink-0 ${
+                                t.isAdvisor
+                                  ? "bg-emerald-600 text-white shadow-sm"
+                                  : "bg-emerald-100 text-emerald-800"
+                              }`}
+                            >
+                              <i className={`fa-solid ${t.isAdvisor ? "fa-star" : "fa-chalkboard-user"}`} />
                             </div>
-                            <div>
-                              <p className="font-bold text-slate-900 text-base leading-snug">
-                                {t.teacherName}
-                              </p>
-                              <p className="text-xs text-slate-500">
-                                ครูผู้สอนวิชา: <strong className="text-slate-800">{t.subjectName || "ประจำชั้น"}</strong>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="font-bold text-slate-900 text-base leading-snug">
+                                  {t.teacherName}
+                                </p>
+                                {t.isAdvisor && (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-600 text-white shadow-2xs">
+                                    ⭐ ครูประจำชั้น
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-slate-500 truncate">
+                                {t.isAdvisor ? (
+                                  <strong className="text-emerald-800 font-semibold">
+                                    ครูประจำชั้น / ที่ปรึกษา {t.advisorRoom ? `(ห้อง ${t.advisorRoom})` : ""}
+                                  </strong>
+                                ) : (
+                                  <span>วิชา: <strong className="text-slate-800">{t.subjectName || "ประจำชั้น"}</strong></span>
+                                )}
                               </p>
                             </div>
                           </div>
@@ -1128,9 +1163,13 @@ export default function ParentLiff() {
                             {t.phoneNumber ? (
                               <a
                                 href={`tel:${t.phoneNumber.replace(/[^0-9]/g, "")}`}
-                                className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm transition shadow-sm flex items-center justify-center gap-2"
+                                className={`w-full py-3 px-4 rounded-xl font-bold text-sm transition shadow-sm flex items-center justify-center gap-2 cursor-pointer ${
+                                  t.isAdvisor
+                                    ? "bg-emerald-700 hover:bg-emerald-800 text-white"
+                                    : "bg-emerald-600 hover:bg-emerald-700 text-white"
+                                }`}
                               >
-                                <i className="fa-solid fa-phone" /> โทรหาครู ({t.phoneNumber})
+                                <i className="fa-solid fa-phone" /> {t.isAdvisor ? "โทรหาครูประจำชั้น" : "โทรหาครู"} ({t.phoneNumber})
                               </a>
                             ) : (
                               <div className="w-full py-2.5 px-3 rounded-xl bg-slate-200/60 text-slate-500 text-xs text-center">
@@ -1147,9 +1186,9 @@ export default function ParentLiff() {
                                 }
                                 target="_blank"
                                 rel="noreferrer"
-                                className="w-full py-3 px-4 rounded-xl bg-[#06C755] hover:bg-[#05b34c] text-white font-bold text-sm transition shadow-sm flex items-center justify-center gap-2"
+                                className="w-full py-3 px-4 rounded-xl bg-[#06C755] hover:bg-[#05b34c] text-white font-bold text-sm transition shadow-sm flex items-center justify-center gap-2 cursor-pointer"
                               >
-                                <i className="fa-brands fa-line text-lg" /> แอดไลน์ ({t.lineId})
+                                <i className="fa-brands fa-line text-lg" /> {t.isAdvisor ? "แอดไลน์ครูประจำชั้น" : "แอดไลน์ครู"} ({t.lineId})
                               </a>
                             ) : (
                               <div className="w-full py-2.5 px-3 rounded-xl bg-slate-200/60 text-slate-500 text-xs text-center">

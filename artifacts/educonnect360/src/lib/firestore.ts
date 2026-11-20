@@ -2447,58 +2447,93 @@ export async function updateTeacherContactProfile(
   await setDoc(ref, payload, { merge: true });
 }
 
-/** Retrieves contact details for all teachers associated with a student's enrolled classes. */
+/** Retrieves contact details for all teachers associated with a student (Homeroom Advisor & Subject Teachers). */
 export async function getTeacherContactsForStudent(studentUid: string): Promise<TeacherContact[]> {
   const database = requireDb();
-  const classes = await getClassesForStudent(studentUid);
-  if (classes.length === 0) return [];
+  const student = await getUserProfile(studentUid);
+  const studentGrade = student?.gradeLevel?.trim() || "";
 
   const teacherMap = new Map<string, TeacherContact>();
 
-  for (const cls of classes) {
-    if (!cls.teacherId) continue;
-    if (!teacherMap.has(cls.teacherId)) {
-      try {
-        const teacherSnap = await getDoc(doc(database, "users", cls.teacherId));
-        if (teacherSnap.exists()) {
-          const tData = teacherSnap.data();
+  // 1. First, search for the Homeroom / Advisor Teacher (ครูประจำชั้น / ที่ปรึกษา)
+  if (studentGrade) {
+    try {
+      const advSnap = await getDocs(
+        query(collection(database, "users"), where("advisorRoom", "==", studentGrade)),
+      );
+      advSnap.forEach((d) => {
+        const tData = d.data();
+        teacherMap.set(d.id, {
+          teacherId: d.id,
+          teacherName: tData.fullName || tData.displayName || "ครูประจำชั้น",
+          subjectName: `ครูประจำชั้น / ที่ปรึกษา (${studentGrade})`,
+          phoneNumber: tData.phoneNumber || "",
+          lineId: tData.lineId || "",
+          email: tData.email || "",
+          isAdvisor: true,
+          advisorRoom: studentGrade,
+        });
+      });
+    } catch (e) {
+      console.warn("Failed to query advisor teacher by room:", e);
+    }
+  }
+
+  // 2. Query teachers from the student's enrolled classes
+  try {
+    const classes = await getClassesForStudent(studentUid);
+    for (const cls of classes) {
+      if (!cls.teacherId) continue;
+      if (!teacherMap.has(cls.teacherId)) {
+        try {
+          const teacherSnap = await getDoc(doc(database, "users", cls.teacherId));
+          if (teacherSnap.exists()) {
+            const tData = teacherSnap.data();
+            const isAdvisor = tData.advisorRoom === studentGrade;
+            teacherMap.set(cls.teacherId, {
+              teacherId: cls.teacherId,
+              teacherName: tData.fullName || tData.displayName || cls.teacherName || "ครูผู้สอน",
+              subjectName: isAdvisor ? `ครูประจำชั้น / ${cls.name}` : cls.name,
+              phoneNumber: tData.phoneNumber || "",
+              lineId: tData.lineId || "",
+              email: tData.email || "",
+              isAdvisor,
+              advisorRoom: tData.advisorRoom,
+            });
+          } else {
+            teacherMap.set(cls.teacherId, {
+              teacherId: cls.teacherId,
+              teacherName: cls.teacherName || "คุณครู",
+              subjectName: cls.name,
+              phoneNumber: "",
+              lineId: "",
+            });
+          }
+        } catch (err) {
+          console.warn("Error fetching teacher contact:", err);
           teacherMap.set(cls.teacherId, {
             teacherId: cls.teacherId,
-            teacherName: tData.fullName || tData.displayName || cls.teacherName || "ครูประจำชั้น",
-            subjectName: cls.name,
-            phoneNumber: tData.phoneNumber || "",
-            lineId: tData.lineId || "",
-            email: tData.email || "",
-          });
-        } else {
-          teacherMap.set(cls.teacherId, {
-            teacherId: cls.teacherId,
-            teacherName: cls.teacherName || "ครูประจำชั้น",
+            teacherName: cls.teacherName || "คุณครู",
             subjectName: cls.name,
             phoneNumber: "",
             lineId: "",
           });
         }
-      } catch (err) {
-        console.warn("Error fetching teacher contact:", err);
-        teacherMap.set(cls.teacherId, {
-          teacherId: cls.teacherId,
-          teacherName: cls.teacherName || "ครูประจำชั้น",
-          subjectName: cls.name,
-          phoneNumber: "",
-          lineId: "",
-        });
       }
     }
+  } catch (err) {
+    console.warn("Error fetching classes for teacher contacts:", err);
   }
 
-  return Array.from(teacherMap.values());
+  // Sort advisor teacher(s) first
+  return Array.from(teacherMap.values()).sort((a, b) => (b.isAdvisor ? 1 : 0) - (a.isAdvisor ? 1 : 0));
 }
 
 /** Creates a new announcement post. */
 export async function createAnnouncement(input: {
   classId?: string;
   className?: string;
+  gradeLevel?: string;
   teacherId: string;
   teacherName: string;
   title: string;
@@ -2509,6 +2544,7 @@ export async function createAnnouncement(input: {
   const payload = {
     classId: input.classId || null,
     className: input.className || null,
+    gradeLevel: input.gradeLevel || null,
     teacherId: input.teacherId,
     teacherName: input.teacherName,
     title: input.title.trim(),
@@ -2523,15 +2559,20 @@ export async function createAnnouncement(input: {
     ...payload,
     classId: input.classId,
     className: input.className,
+    gradeLevel: input.gradeLevel,
     priority: input.priority || "normal",
     createdAt: new Date().toISOString(),
   };
 }
 
-/** Retrieves announcements relevant to a student (by their enrolled classes). */
+/** Retrieves announcements relevant to a student (by their enrolled classes and grade level). */
 export async function getAnnouncementsForStudent(studentUid: string): Promise<Announcement[]> {
   const database = requireDb();
-  const classes = await getClassesForStudent(studentUid);
+  const [student, classes] = await Promise.all([
+    getUserProfile(studentUid),
+    getClassesForStudent(studentUid),
+  ]);
+  const studentGrade = student?.gradeLevel?.trim() || "";
   const classIds = classes.map((c) => c.id);
 
   try {
@@ -2545,6 +2586,7 @@ export async function getAnnouncementsForStudent(studentUid: string): Promise<An
           id: d.id,
           classId: data.classId || undefined,
           className: data.className || undefined,
+          gradeLevel: data.gradeLevel || undefined,
           teacherId: data.teacherId || "",
           teacherName: data.teacherName || "คุณครู",
           title: data.title || "",
@@ -2553,7 +2595,17 @@ export async function getAnnouncementsForStudent(studentUid: string): Promise<An
           createdAt: tsToISO(data.createdAt),
         };
       })
-      .filter((a) => !a.classId || classIds.includes(a.classId));
+      .filter((a) => {
+        // 1. Entire school / general announcement
+        if (!a.classId && !a.gradeLevel) return true;
+        // 2. Targeted to student's grade or advisor room (e.g. "ม.2/1" or "ม.2")
+        if (a.gradeLevel && studentGrade) {
+          if (a.gradeLevel === studentGrade || studentGrade.startsWith(a.gradeLevel)) return true;
+        }
+        // 3. Class-specific announcement
+        if (a.classId && classIds.includes(a.classId)) return true;
+        return false;
+      });
   } catch (err) {
     console.warn("Failed to query announcements:", err);
     return [];

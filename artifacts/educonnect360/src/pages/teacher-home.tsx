@@ -9,6 +9,7 @@ import { CreateStudentDialog } from "@/components/create-student-dialog";
 import { CreateClassModal } from "@/components/create-class-modal";
 import { TeacherProfileModal } from "@/components/teacher-profile-modal";
 import { StudentSchedulePanel } from "@/components/student-schedule-panel";
+import { CreateAnnouncementModal } from "@/components/create-announcement-modal";
 import type { Class } from "@/types";
 
 export default function TeacherHome() {
@@ -19,6 +20,7 @@ export default function TeacherHome() {
   const [showAddStudent, setShowAddStudent] = useState(false);
   const [showCreateClass, setShowCreateClass] = useState(false);
   const [showContactModal, setShowContactModal] = useState(false);
+  const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
 
   const advisorRoom = profile?.advisorRoom || profile?.gradeLevel || "ม.2/1";
 
@@ -73,6 +75,12 @@ export default function TeacherHome() {
           </div>
           <div className="flex items-center gap-2.5 flex-wrap">
             <button
+              onClick={() => setShowAnnouncementModal(true)}
+              className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs transition flex items-center gap-2 shadow-xs cursor-pointer"
+            >
+              <i className="fa-solid fa-bullhorn" /> พิมพ์ประกาศถึงผู้ปกครอง
+            </button>
+            <button
               onClick={() => setShowCreateClass(true)}
               className="px-4 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs transition flex items-center gap-2 shadow-xs cursor-pointer"
             >
@@ -114,13 +122,23 @@ export default function TeacherHome() {
               </p>
             </div>
 
-            <button
-              onClick={() => setShowContactModal(true)}
-              className="px-3.5 py-2 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground transition flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
-            >
-              <i className="fa-solid fa-pen-to-square text-teal-600" />
-              <span>แก้ไขห้องที่ปรึกษา</span>
-            </button>
+            <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+              <button
+                onClick={() => setShowAnnouncementModal(true)}
+                className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-xs font-semibold text-rose-800 transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <i className="fa-solid fa-bullhorn text-rose-600" />
+                <span>พิมพ์ประกาศห้อง {advisorRoom}</span>
+              </button>
+
+              <button
+                onClick={() => setShowContactModal(true)}
+                className="px-3.5 py-2 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <i className="fa-solid fa-pen-to-square text-teal-600" />
+                <span>แก้ไขห้องที่ปรึกษา</span>
+              </button>
+            </div>
           </div>
 
           <StudentSchedulePanel
@@ -235,6 +253,14 @@ export default function TeacherHome() {
         open={showContactModal}
         onClose={() => setShowContactModal(false)}
         onSuccess={refresh}
+      />
+
+      <CreateAnnouncementModal
+        open={showAnnouncementModal}
+        onClose={() => setShowAnnouncementModal(false)}
+        onSuccess={refresh}
+        defaultRoom={advisorRoom}
+        classes={classes}
       />
     </div>
   );

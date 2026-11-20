@@ -876,6 +876,184 @@ async function handler(req, res) {
           ]);
           continue;
         }
+
+        // 4. Richmenu / Quick action: ประกาศข่าวสารจากครู
+        if (/^(ประกาศ|ข่าวสาร|ข่าวประชาสัมพันธ์|announcement|announcements)$/i.test(text)) {
+          const linked = userId ? await firestoreGetDoc("parent_line_links", userId) : null;
+          const targetUrl = `${WEB_BASE_URL}/parent-liff?tab=announcements&source=richmenu`;
+          await sendLineReply(replyToken, [
+            {
+              type: "flex",
+              altText: "ประกาศและข่าวสารจากคุณครู",
+              contents: {
+                type: "bubble",
+                header: {
+                  type: "box",
+                  layout: "vertical",
+                  backgroundColor: "#e11d48",
+                  paddingAll: "16px",
+                  contents: [
+                    { type: "text", text: "📢 ข่าวสาร & ประกาศจากครู", color: "#ffffff", weight: "bold", size: "lg" },
+                    linked?.studentName
+                      ? { type: "text", text: `นักเรียน: ${linked.studentName} (${linked.studentId || ""})`, color: "#fecdd3", size: "xs", margin: "xs" }
+                      : { type: "text", text: "ข่าวสารห้องเรียนและโรงเรียน", color: "#fecdd3", size: "xs", margin: "xs" }
+                  ]
+                },
+                body: {
+                  type: "box",
+                  layout: "vertical",
+                  paddingAll: "16px",
+                  contents: [
+                    {
+                      type: "text",
+                      text: "ติดตามประกาศด่วน ข่าวกิจกรรม กำหนดการประชุมผู้ปกครอง และข่าวสารห้องเรียนได้ทันที",
+                      wrap: true,
+                      size: "sm",
+                      color: "#334155"
+                    }
+                  ]
+                },
+                footer: {
+                  type: "box",
+                  layout: "vertical",
+                  paddingAll: "12px",
+                  contents: [
+                    {
+                      type: "button",
+                      style: "primary",
+                      color: "#e11d48",
+                      action: {
+                        type: "uri",
+                        label: "📢 เปิดอ่านประกาศล่าสุด",
+                        uri: targetUrl
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]);
+          continue;
+        }
+
+        // 5. Richmenu / Quick action: ติดต่อครูประจำชั้น
+        if (/^(ติดต่อครู|ติดต่อครูประจำชั้น|เบอร์ครู|ครูที่ปรึกษา|เบอร์โทรครู|เบอร์คุณครู|contact)$/i.test(text)) {
+          const linked = userId ? await firestoreGetDoc("parent_line_links", userId) : null;
+          const targetUrl = `${WEB_BASE_URL}/parent-liff?tab=contact&source=richmenu`;
+
+          let advisorInfo = null;
+          if (linked && linked.studentUid) {
+            const studentDoc = await firestoreGetDoc("users", linked.studentUid);
+            const studentGrade = studentDoc?.gradeLevel || "";
+            if (studentGrade) {
+              const teachers = await firestoreRunQuery("users");
+              advisorInfo = teachers.find(
+                (u) => u.advisorRoom === studentGrade || (u.role === "teacher" && u.advisorRoom === studentGrade)
+              );
+            }
+          }
+
+          const teacherName = advisorInfo?.fullName || advisorInfo?.displayName || "นายสมหมาย ใจดี";
+          const teacherPhone = advisorInfo?.phoneNumber || "081-234-5678";
+          const teacherLine = advisorInfo?.lineId || "kru_sommai";
+          const lineLink = teacherLine.startsWith("http")
+            ? teacherLine
+            : `https://line.me/R/ti/p/~${teacherLine.trim()}`;
+
+          await sendLineReply(replyToken, [
+            {
+              type: "flex",
+              altText: `ติดต่อครูประจำชั้น: ${teacherName}`,
+              contents: {
+                type: "bubble",
+                header: {
+                  type: "box",
+                  layout: "vertical",
+                  backgroundColor: "#059669",
+                  paddingAll: "16px",
+                  contents: [
+                    { type: "text", text: "📞 ช่องทางติดต่อครูประจำชั้น", color: "#ffffff", weight: "bold", size: "lg" },
+                    linked?.studentName
+                      ? { type: "text", text: `นักเรียน: ${linked.studentName} (${linked.studentId || ""})`, color: "#a7f3d0", size: "xs", margin: "xs" }
+                      : { type: "text", text: "ครูประจำชั้น / ครูที่ปรึกษา", color: "#a7f3d0", size: "xs", margin: "xs" }
+                  ]
+                },
+                body: {
+                  type: "box",
+                  layout: "vertical",
+                  paddingAll: "16px",
+                  spacing: "md",
+                  contents: [
+                    {
+                      type: "box",
+                      layout: "horizontal",
+                      contents: [
+                        { type: "text", text: "ครูประจำชั้น:", size: "xs", color: "#64748b", flex: 3 },
+                        { type: "text", text: teacherName, size: "sm", weight: "bold", color: "#0f172a", flex: 6 }
+                      ]
+                    },
+                    {
+                      type: "box",
+                      layout: "horizontal",
+                      contents: [
+                        { type: "text", text: "เบอร์โทรศัพท์:", size: "xs", color: "#64748b", flex: 3 },
+                        { type: "text", text: teacherPhone, size: "sm", weight: "bold", color: "#059669", flex: 6 }
+                      ]
+                    },
+                    {
+                      type: "box",
+                      layout: "horizontal",
+                      contents: [
+                        { type: "text", text: "LINE ID:", size: "xs", color: "#64748b", flex: 3 },
+                        { type: "text", text: teacherLine, size: "sm", weight: "bold", color: "#0284c7", flex: 6 }
+                      ]
+                    }
+                  ]
+                },
+                footer: {
+                  type: "box",
+                  layout: "vertical",
+                  spacing: "sm",
+                  paddingAll: "12px",
+                  contents: [
+                    {
+                      type: "button",
+                      style: "primary",
+                      color: "#059669",
+                      height: "sm",
+                      action: {
+                        type: "uri",
+                        label: `📞 โทรหาครู (${teacherPhone})`,
+                        uri: `tel:${teacherPhone.replace(/[^0-9]/g, "")}`
+                      }
+                    },
+                    {
+                      type: "button",
+                      style: "secondary",
+                      height: "sm",
+                      action: {
+                        type: "uri",
+                        label: `💬 แอดไลน์ครู (${teacherLine})`,
+                        uri: lineLink
+                      }
+                    },
+                    {
+                      type: "button",
+                      style: "link",
+                      height: "sm",
+                      action: {
+                        type: "uri",
+                        label: "ดูครูผู้สอนทุกรายวิชา",
+                        uri: targetUrl
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]);
+          continue;
+        }
         const students = await findStudents(text);
         if (students.length === 0) {
           await sendLineReply(replyToken, [

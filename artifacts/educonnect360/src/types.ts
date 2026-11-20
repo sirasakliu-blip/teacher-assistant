@@ -263,6 +263,7 @@ export interface Announcement {
   id: string;
   classId?: string;
   className?: string;
+  gradeLevel?: string; // Target room e.g. "ม.2/1" or all
   teacherId: string;
   teacherName: string;
   title: string;
@@ -279,6 +280,8 @@ export interface TeacherContact {
   phoneNumber?: string;
   lineId?: string;
   email?: string;
+  isAdvisor?: boolean;
+  advisorRoom?: string;
 }
 
 /** Day of week for student class timetable */
