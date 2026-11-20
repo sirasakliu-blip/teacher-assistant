@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { TeacherNav } from "@/components/teacher-nav";
 import { useToast } from "@/hooks/use-toast";
+import { openAgent, copyToClipboard, type AgentKey } from "@/lib/ai-assistant";
 
 type AssistantTab = "lesson-plan" | "pa-evaluation" | "general-chat";
 
@@ -8,233 +9,188 @@ export default function TeacherAiAssistant() {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<AssistantTab>("lesson-plan");
 
-  // State: Lesson Plan Generator
+  // =========================================================================
+  // STATE: แท็บ 1 - ช่วยคิดแผนการสอน [A]
+  // =========================================================================
   const [planSubject, setPlanSubject] = useState("วิทยาศาสตร์และเทคโนโลยี");
   const [planGrade, setPlanGrade] = useState("มัธยมศึกษาปีที่ 3");
   const [planTopic, setPlanTopic] = useState("ระบบสุริยะและการโคจรของดาวเคราะห์");
   const [planModel, setPlanModel] = useState("Active Learning (การจัดการเรียนรู้เชิงรุก)");
-  const [planDuration, setPlanDuration] = useState("1 คาบ (50 นาที)");
-  const [planStandard, setPlanStandard] = useState("ว 3.1 ม.3/1 อธิบายการโคจรของดาวเคราะห์รอบดวงอาทิตย์ด้วยแรงโน้มถ่วง");
-  const [planOutput, setPlanOutput] = useState<string | null>(null);
-  const [generatingPlan, setGeneratingPlan] = useState(false);
+  const [planStandard, setPlanStandard] = useState("");
+  const [planErrors, setPlanErrors] = useState<{ subject?: string; grade?: string; topic?: string }>({});
+  const [planPromptOutput, setPlanPromptOutput] = useState<string | null>(null);
 
-  // State: PA Evaluation
-  const [paRank, setPaRank] = useState("ชำนาญการพิเศษ (คศ.3)");
-  const [paSubject, setPaSubject] = useState("คณิตศาสตร์");
-  const [paGrade, setPaGrade] = useState("มัธยมศึกษาปีที่ 2");
-  const [paTopicType, setPaTopicType] = useState("challenge-issue");
-  const [paFocus, setPaFocus] = useState("การพัฒนาทักษะการแก้โจทย์ปัญหาคณิตศาสตร์ด้วยกระบวนการคิดเชิงคำนวณและเกมมิฟิเคชัน");
-  const [paOutput, setPaOutput] = useState<string | null>(null);
-  const [generatingPa, setGeneratingPa] = useState(false);
+  // =========================================================================
+  // STATE: แท็บ 2 - จัดการประเมินวิทยฐานะ (ว.PA) [B]
+  // =========================================================================
+  const [paCustomPrompt, setPaCustomPrompt] = useState("");
+  const [paPromptOutput, setPaPromptOutput] = useState<string | null>(null);
 
-  // State: General Chat
-  const [chatPrompt, setChatPrompt] = useState("");
-  const [chatHistory, setChatHistory] = useState<Array<{ role: "user" | "ai"; text: string; time: string }>>([
-    {
-      role: "ai",
-      text: "สวัสดีครับคุณครู! ผมคือระบบผู้ช่วยสอน AI สำหรับคุณครูไทย ยินดีช่วยออกแบบแผนการจัดกิจกรรมการเรียนรู้ ออกข้อสอบ ออกแบบ Rubric หรือเขียนเอกสารประเมินวิทยฐานะ ว.PA ครับ",
-      time: "พร้อมใช้งาน",
-    },
-  ]);
-  const [thinkingChat, setThinkingChat] = useState(false);
+  // =========================================================================
+  // STATE: แท็บ 3 - ปรึกษา AI ทั่วไป [C]
+  // =========================================================================
+  const [selectedChatAgent, setSelectedChatAgent] = useState<AgentKey>("pa");
+  const [generalPrompt, setGeneralPrompt] = useState("");
+  const [generalPromptOutput, setGeneralPromptOutput] = useState<string | null>(null);
 
-  // Helper copy text
-  async function handleCopy(text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-      toast({ title: "คัดลอกข้อความแล้ว", description: "คัดลอกไปยังคลิปบอร์ดเรียบร้อย" });
-    } catch {
-      toast({ variant: "destructive", title: "คัดลอกไม่สำเร็จ" });
+  /**
+   * แจ้งเตือน Toast เมื่อคัดลอกสำเร็จ (แสดง 3 วินาที)
+   */
+  function notifyCopied() {
+    toast({
+      title: "คัดลอกคำสั่งแล้ว",
+      description: "นำไปวาง (Ctrl+V) ในหน้าต่างแชต LangMind ที่เปิดขึ้นได้ทันทีครับ",
+      duration: 3000,
+    });
+  }
+
+  // =========================================================================
+  // HANDLERS: แท็บ 1 - แผนการสอน [A]
+  // =========================================================================
+  async function handleGenerateLessonPlan(e: React.FormEvent) {
+    e.preventDefault();
+    const errors: { subject?: string; grade?: string; topic?: string } = {};
+
+    if (!planSubject.trim()) {
+      errors.subject = "กรุณากรอกหรือเลือกกลุ่มสาระการเรียนรู้";
     }
+    if (!planGrade.trim()) {
+      errors.grade = "กรุณากรอกหรือเลือกระดับชั้น";
+    }
+    if (!planTopic.trim()) {
+      errors.topic = "กรุณาระบุหน่วยการเรียนรู้ / เรื่องที่สอน";
+    }
+
+    setPlanErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+
+    // 2. สร้างข้อความคำสั่งภาษาไทยตามรูปแบบที่กำหนด
+    const standardText = planStandard.trim() || "ยังไม่ระบุ ให้เลือกตัวชี้วัดที่ตรงจากหลักสูตรแกนกลางฯ";
+    const promptText = `ช่วยร่างแผนการจัดการเรียนรู้ฉบับสมบูรณ์
+กลุ่มสาระการเรียนรู้: ${planSubject}
+ระดับชั้น: ${planGrade}
+หน่วยการเรียนรู้/เรื่อง: ${planTopic}
+รูปแบบการจัดการเรียนรู้: ${planModel}
+มาตรฐาน/ตัวชี้วัด: ${standardText}
+ขอเป็นแผนแบบเต็ม มีจุดประสงค์ สาระสำคัญ กิจกรรม สื่อ และการวัดประเมินผล และออกเป็นไฟล์ Word`;
+
+    // 3. คัดลอกข้อความลงคลิปบอร์ด
+    await copyToClipboard(promptText);
+
+    // 4. เปิด Agent "plan"
+    openAgent("plan", promptText);
+
+    // 5. บันทึกและแสดงผลกล่องการ์ดเขียวอ่อนใต้ปุ่ม
+    setPlanPromptOutput(promptText);
+
+    // 6. แสดง toast
+    notifyCopied();
   }
 
-  // Generate Lesson Plan
-  function handleGenerateLessonPlan(e: React.FormEvent) {
-    e.preventDefault();
-    setGeneratingPlan(true);
+  // =========================================================================
+  // HANDLERS: แท็บ 2 - ว.PA [B]
+  // =========================================================================
+  const PA_PRESET_QUESTIONS = [
+    "สรุปเกณฑ์การประเมิน ว.PA สำหรับครูชำนาญการ",
+    "ช่วยร่างข้อตกลงในการพัฒนางาน (PA) ประเด็นท้าทาย สำหรับ มัธยมศึกษา/วิชาคณิตศาสตร์",
+    "ตัวชี้วัดของ PA มีอะไรบ้าง ต้องเตรียมหลักฐานอะไร",
+    "งานไหนถูกยกเลิกตามนโยบาย Work Smart แล้วบ้าง",
+    "แนวทางการทำคลิปการสอนตามเกณฑ์ ว9/2564 ไม่ให้ตกเกณฑ์",
+    "การเขียนผลลัพธ์การเรียนรู้ของผู้เรียน (ด้านผลงานและร่องรอยการเรียนรู้)",
+  ];
 
-    setTimeout(() => {
-      const generated = `# แผนการจัดการเรียนรู้ (Active Learning)
-**กลุ่มสาระการเรียนรู้:** ${planSubject}  
-**ระดับชั้น:** ${planGrade} | **เวลาจัดการเรียนรู้:** ${planDuration}  
-**หน่วยการเรียนรู้/เรื่อง:** ${planTopic}  
-**รูปแบบการสอน:** ${planModel}
+  async function handleSendPaQuestion(questionText: string) {
+    if (!questionText.trim()) return;
+    const promptText = questionText.trim();
 
----
-
-### 1. สาระสำคัญ / ความคิดรวบยอด (Concept)
-ผู้เรียนได้ศึกษาและทำความเข้าใจเกี่ยวกับ "${planTopic}" ผ่านการลงมือปฏิบัติจริง (Hands-on Experience) เพื่อให้สามารถเชื่อมโยงหลักการทางวิชาการเข้ากับปรากฏการณ์ในชีวิตประจำวัน สามารถอธิบาย กลั่นกรอง และประยุกต์ใช้ความรู้ได้อย่างเป็นระบบ
-
-### 2. มาตรฐานการเรียนรู้และตัวชี้วัด
-* **มาตรฐาน/ตัวชี้วัด:** ${planStandard || "ตัวชี้วัดตามหลักสูตรแกนกลางการศึกษาขั้นพื้นฐาน พ.ศ. 2551 (ฉบับปรับปรุง 2560)"}
-
-### 3. จุดประสงค์การเรียนรู้ (K-P-A)
-1. **ด้านความรู้ (Knowledge - K):** นักเรียนสามารถอธิบายหลักการ องค์ประกอบ และความสำคัญของ ${planTopic} ได้อย่างถูกต้อง
-2. **ด้านทักษะกระบวนการ (Process - P):** นักเรียนสามารถร่วมกันวางแผน สำรวจ และวิเคราะห์ข้อมูล นำเสนอผลการทดลอง/ชิ้นงานได้อย่างสร้างสรรค์
-3. **ด้านคุณลักษณะอันพึงประสงค์ (Attitude - A):** มีวินัย ใฝ่เรียนรู้ มุ่งมั่นในการทำงาน และมีทักษะการทำงานร่วมกับผู้อื่นเป็นทีม
-
----
-
-### 4. กิจกรรมการจัดการเรียนรู้ (${planModel})
-
-#### ขั้นที่ 1: ขั้นนำเข้าสู่บทเรียน (Engage / Spark Curiosity) - 10 นาที
-1. ครูเปิดประเด็นด้วยคำถามท้าทายความคิด (Prompt Question) หรือภาพจำลองสถานการณ์จริง
-2. นักเรียนร่วมกันระดมสมองและตอบคำถามสั้นๆ ผ่านการแสดงความคิดเห็น เพื่อสำรวจความรู้เดิม (Prior Knowledge)
-3. ครูกล่าวเชื่อมโยงเข้าสู่บทเรียนและแจ้งจุดประสงค์การเรียนรู้
-
-#### ขั้นที่ 2: ขั้นจัดกิจกรรมการเรียนรู้เชิงรุก (Active Exploration & Elaboration) - 30 นาที
-1. แบ่งกลุ่มนักเรียนออกเป็นกลุ่มละ 4-5 คน แบบคละความสามารถ (เก่ง-ปานกลาง-ควรพัฒนา)
-2. นักเรียนแต่ละกลุ่มรับใบกิจกรรมและอุปกรณ์/สื่อดิจิทัล เพื่อร่วมกันสืบค้นและลงมือปฏิบัติ
-3. สมาชิกในกลุ่มแลกเปลี่ยนความคิดเห็น สรุปองค์ความรู้ และสร้างสรรค์แผนภาพ/โมเดลจำลอง
-4. ครูทำหน้าที่เป็นผู้อำนวยความสะดวก (Facilitator) คอยให้คำแนะนำและกระตุ้นการคิดขั้นสูง (Higher-Order Thinking)
-5. ตัวแทนแต่ละกลุ่มนำเสนอผลงาน แลกเปลี่ยนเรียนรู้ร่วมกันในชั้นเรียน
-
-#### ขั้นที่ 3: ขั้นสรุปและประเมินผล (Review & Assessment) - 10 นาที
-1. ครูและนักเรียนร่วมกันสรุปสาระสำคัญของ "${planTopic}"
-2. นักเรียนทำแบบฝึกหัดทบทวน หรือแบบประเมินความเข้าใจอย่างรวดเร็ว (Exit Ticket)
-3. ครูมอบหมายงานเพิ่มเติมเพื่อต่อยอดความรู้ และเปิดโอกาสให้นักเรียนซักถามข้อสงสัย
-
----
-
-### 5. สื่อ นวัตกรรม และแหล่งการเรียนรู้
-1. สื่อนำเสนออินโฟกราฟิกและคลิปวิดีโอจำลองสถานการณ์
-2. ใบกิจกรรม Active Learning และชุดทดลอง/ชุดข้อมูลตัวอย่าง
-3. แหล่งข้อมูลออนไลน์ / ห้องสมุดดิจิทัล
-
----
-
-### 6. การวัดและประเมินผลการเรียนรู้
-| สิ่งที่วัด (ด้าน) | วิธีการวัด | เครื่องมือวัด | เกณฑ์การผ่าน |
-|---|---|---|---|
-| ด้านความรู้ (K) | ตรวจใบกิจกรรม/แบบฝึกหัด | แบบตรวจแบบฝึกหัด | ได้คะแนนร้อยละ 70 ขึ้นไป |
-| ด้านทักษะ (P) | สังเกตพฤติกรรมการปฏิบัติงาน | แบบประเมินทักษะกระบวนการ | ระดับคุณภาพ "ดี" ขึ้นไป |
-| ด้านคุณลักษณะ (A) | สังเกตความร่วมมือและความรับผิดชอบ | แบบประเมินคุณลักษณะ | ระดับคุณภาพ "ผ่าน" ขึ้นไป |
-
----
-**บันทึกหลังแผนการจัดการเรียนรู้:** (สำหรับครูบันทึกผลการสอน ปัญหา/อุปสรรค และแนวทางแก้ไข)`;
-
-      setPlanOutput(generated);
-      setGeneratingPlan(false);
-      toast({ title: "สร้างแผนการสอนสำเร็จ!", description: "สามารถคัดลอกหรือนำไปปรับใช้ได้ทันที" });
-    }, 800);
+    await copyToClipboard(promptText);
+    openAgent("pa", promptText);
+    setPaPromptOutput(promptText);
+    notifyCopied();
   }
 
-  // Generate PA Document
-  function handleGeneratePa(e: React.FormEvent) {
+  // =========================================================================
+  // HANDLERS: แท็บ 3 - ปรึกษา AI ทั่วไป [C]
+  // =========================================================================
+  const GENERAL_AGENTS: Array<{
+    key: AgentKey;
+    name: string;
+    description: string;
+    icon: string;
+    color: string;
+  }> = [
+    {
+      key: "pa",
+      name: "ธุรการและวิทยฐานะครู (ว.PA)",
+      description: "ปรึกษาเกณฑ์ประเมิน PA, เลื่อนวิทยฐานะ, DPA และภาระงานครู",
+      icon: "fa-solid fa-award",
+      color: "text-emerald-700 bg-emerald-50 border-emerald-200",
+    },
+    {
+      key: "docs",
+      name: "เอกสารราชการและใบลา",
+      description: "ร่างหนังสือราชการ บันทึกข้อความ ใบลา คำสั่ง และระเบียบราชการ",
+      icon: "fa-solid fa-file-signature",
+      color: "text-blue-700 bg-blue-50 border-blue-200",
+    },
+    {
+      key: "read",
+      name: "อ่านและสรุปหนังสือ",
+      description: "สรุปสาระสำคัญจากเอกสารยาว บทความวิชาการ และคู่มือการสอน",
+      icon: "fa-solid fa-book-open",
+      color: "text-amber-700 bg-amber-50 border-amber-200",
+    },
+    {
+      key: "parent",
+      name: "ปรึกษาและสื่อสารผู้ปกครอง",
+      description: "ร่างข้อความแจ้งผู้ปกครอง ตอบข้อซักถาม และแนวทางดูแลนักเรียนร่วมกัน",
+      icon: "fa-solid fa-comments",
+      color: "text-purple-700 bg-purple-50 border-purple-200",
+    },
+  ];
+
+  async function handleSendGeneralQuestion(e: React.FormEvent) {
     e.preventDefault();
-    setGeneratingPa(true);
+    if (!generalPrompt.trim()) return;
 
-    setTimeout(() => {
-      const generated = `# เอกสารข้อตกลงในการพัฒนางาน (PA) สำหรับข้าราชการครูและบุคลากรทางการศึกษา
-**ตำแหน่ง:** ครู วิทยฐานะ ${paRank}  
-**กลุ่มสาระการเรียนรู้:** ${paSubject} | **ระดับชั้น:** ${paGrade}  
-**ประเด็นการประเมิน:** ${paTopicType === "challenge-issue" ? "ประเด็นท้าทาย (Challenge Issue)" : "ข้อตกลงในการพัฒนางานตามมาตรฐานตำแหน่ง (PA 1/ส)"}  
-**เรื่อง/ประเด็นมุ่งเน้น:** ${paFocus}
-
----
-
-### ส่วนที่ 2: ข้อตกลงในการพัฒนางานที่เป็น "ประเด็นท้าทาย" ในการพัฒนาผลลัพธ์การเรียนรู้ของผู้เรียน
-*(ระดับการปฏิบัติที่คาดหวังของวิทยฐานะ ${paRank}: ${paRank.includes("ชำนาญการพิเศษ") ? "ริเริ่ม พัฒนา (Originate & Develop)" : paRank.includes("เชี่ยวชาญ") ? "คิดค้น ปรับเปลี่ยน (Invent & Transform)" : "แก้ไขปัญหา (Solve Problem)"})*
-
-#### 1. สภาพปัญหาการจัดการเรียนรู้และคุณภาพการเรียนรู้ของผู้เรียน
-จากการจัดการเรียนรู้วิชา ${paSubject} ระดับชั้น ${paGrade} ในปีการศึกษาที่ผ่านมา พบว่าผู้เรียนส่วนใหญ่ยังขาดทักษะและความเข้าใจเชิงลึกใน "${paFocus}" อันเนื่องมาจากรูปแบบการเรียนรู้เดิมเน้นการบรรยาย ขาดการลงมือปฏิบัติจริง และขาดสื่อการเรียนรู้ที่กระตุ้นแรงจูงใจ ส่งผลให้ผลสัมฤทธิ์ทางการเรียนและทักษะการคิดวิเคราะห์ของผู้เรียนต่ำกว่าเกณฑ์เป้าหมายของสถานศึกษา
-
-#### 2. วิธีการดำเนินการให้บรรลุผล (Process / Action Plan)
-1. **การวิเคราะห์หลักสูตรและมาตรฐานการเรียนรู้:** นำมาตรฐานและตัวชี้วัดกลุ่มสาระการเรียนรู้ ${paSubject} มาวิเคราะห์เพื่อออกแบบหน่วยการเรียนรู้และแผนการจัดการเรียนรู้ที่เน้นผู้เรียนเป็นสำคัญ
-2. **การริเริ่มและพัฒนานวัตกรรม:** ออกแบบและพัฒนานวัตกรรมการจัดการเรียนรู้เชิงรุก (Active Learning) ผสมผสานสื่อดิจิทัลและกระบวนการตามประเด็นท้าทาย
-3. **การจัดกิจกรรมชุมชนแห่งการเรียนรู้ทางวิชาชีพ (PLC):** นำแผนการจัดการเรียนรู้และนวัตกรรมเข้าสู่กระบวนการ PLC ร่วมกับครูในกลุ่มสาระ เพื่อรับข้อเสนอแนะและนำมาปรับปรุงก่อนนำไปใช้จริงในชั้นเรียน
-4. **การนำไปจัดกิจกรรมการเรียนรู้ในชั้นเรียน:** ดำเนินการจัดการเรียนรู้ตามแผน มีการวัดและประเมินผลระหว่างเรียน (Formative Assessment) อย่างต่อเนื่อง
-5. **การสะท้อนผลและสรุปบทเรียน:** ประเมินผลลัพธ์ของผู้เรียน นำข้อมูลมาวิเคราะห์เพื่อพัฒนา ปรับปรุง และทำวิจัยในชั้นเรียน (Classroom Action Research) ต่อไป
-
-#### 3. ผลลัพธ์การพัฒนาที่คาดหวัง (Expected Outcomes)
-
-##### 3.1 ผลลัพธ์เชิงปริมาณ (Quantitative Outcomes)
-* ผู้เรียนชั้น ${paGrade} ร้อยละ **75 ขึ้นไป** มีผลสัมฤทธิ์ทางการเรียนในรายวิชา ${paSubject} ผ่านเกณฑ์ที่สถานศึกษากำหนด
-* ผู้เรียนร้อยละ **80 ขึ้นไป** มีทักษะการปฏิบัติงานและชิ้นงานผ่านเกณฑ์การประเมินในระดับคุณภาพ "ดี" ขึ้นไป
-* มีแผนการจัดการเรียนรู้และสื่อนวัตกรรมที่ผ่านการตรวจสอบโดยกระบวนการ PLC จำนวนอย่างน้อย 1 ชุด
-
-##### 3.2 ผลลัพธ์เชิงคุณภาพ (Qualitative Outcomes)
-* ผู้เรียนมีความกระตือรือร้น ใฝ่รู้ใฝ่เรียน มีทักษะการคิดวิเคราะห์ และสามารถนำความรู้ไปประยุกต์ใช้แก้ปัญหาในชีวิตจริงได้อย่างเหมาะสม
-* ได้นวัตกรรมการจัดการเรียนรู้ต้นแบบที่สามารถเผยแพร่และเป็นแบบอย่าง (Best Practice) ให้แก่ครูในสถานศึกษาและเครือข่ายวิชาชีพได้
-
----
-
-### ร่องรอยหลักฐานที่ต้องเตรียมพร้อมรับการประเมิน (Evidences for DPA):
-1. แผนการจัดการเรียนรู้พร้อมบันทึกหลังการสอน 1 แผน (ตรงกับคลิปการสอน)
-2. คลิปวิดีโอบันทึกการสอนความยาวไม่เกิน 60 นาที (ไม่ตัดต่อ ตามเกณฑ์ ว9/2564)
-3. คลิปวิดีโอแสดงที่มาและความสำคัญ/แรงบันดาลใจ ความยาวไม่เกิน 10 นาที
-4. ผลงานหรือร่องรอยการเรียนรู้ของผู้เรียน (ผลลัพธ์เชิงประจักษ์ 3-5 ชิ้น)`;
-
-      setPaOutput(generated);
-      setGeneratingPa(false);
-      toast({ title: "จัดทำเอกสาร ว.PA สำเร็จ!", description: "สามารถนำไปเป็นโครงร่างในการจัดทำข้อตกลง PA ได้ทันที" });
-    }, 800);
-  }
-
-  // General Chat Submit
-  function handleChatSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!chatPrompt.trim()) return;
-
-    const userText = chatPrompt.trim();
-    setChatPrompt("");
-    setChatHistory((prev) => [
-      ...prev,
-      { role: "user", text: userText, time: new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" }) },
-    ]);
-
-    setThinkingChat(true);
-
-    setTimeout(() => {
-      let aiReply = "";
-      const lower = userText.toLowerCase();
-
-      if (lower.includes("ข้อสอบ") || lower.includes("แบบทดสอบ")) {
-        aiReply = `ตัวอย่างข้อสอบวัดการคิดขั้นสูง (Higher-Order Thinking):\n\n1. จากสถานการณ์ข้างต้น นักเรียนคิดว่าปัจจัยใดมีผลกระทบต่อผลลัพธ์มากที่สุด เพราะเหตุใด?\n   ก. ปัจจัยด้านสิ่งแวดล้อม\n   ข. ปัจจัยด้านกระบวนการทำงาน\n   ค. ปัจจัยด้านทรัพยากร\n   ง. ปัจจัยด้านการวางแผน\n\nเฉลยและเกณฑ์การให้คะแนน: สามารถประเมินความสามารถในการเชื่อมโยงเหตุผล (คะแนนเต็ม 2 คะแนน)`;
-      } else if (lower.includes("rubric") || lower.includes("เกณฑ์")) {
-        aiReply = `เกณฑ์การประเมินชิ้นงาน (Rubric Score แบบ 4 ระดับ):\n\n1. ดีมาก (4): เนื้อหาถูกต้องครบถ้วน ออกแบบสร้างสรรค์ และนำเสนอได้อย่างมั่นใจและชัดเจน\n2. ดี (3): เนื้อหาถูกต้อง มีความคิดสร้างสรรค์ นำเสนอได้ดี\n3. พอใช้ (2): เนื้อหาถูกต้องบางส่วน นำเสนอตามรูปแบบที่กำหนด\n4. ปรับปรุง (1): เนื้อหาไม่ครบถ้วน ต้องได้รับการชี้แนะเพิ่มเติม`;
-      } else {
-        aiReply = `คำแนะนำสำหรับคุณครู:\nสำหรับการจัดกิจกรรม "${userText}" แนะนำให้เน้นการมีส่วนร่วมของนักเรียน (Student-Centered) โดยแบ่งขั้นตอนเป็น:\n1. กระตุ้นความสนใจด้วยคำถามเปิด (Open-ended Question)\n2. ให้นักเรียนจับคู่หรือรวมกลุ่มย่อยเพื่อแลกเปลี่ยนความคิดเห็น (Think-Pair-Share)\n3. ใช้เครื่องมือประเมินความเข้าใจสั้นๆ ท้ายคาบ เพื่อนำผลมาปรับแผนการสอนในคาบถัดไปครับ`;
-      }
-
-      setChatHistory((prev) => [
-        ...prev,
-        { role: "ai", text: aiReply, time: new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" }) },
-      ]);
-      setThinkingChat(false);
-    }, 600);
+    const promptText = generalPrompt.trim();
+    await copyToClipboard(promptText);
+    openAgent(selectedChatAgent, promptText);
+    setGeneralPromptOutput(promptText);
+    notifyCopied();
   }
 
   return (
     <div className="min-h-[100dvh] w-full bg-background relative overflow-hidden font-sans pb-16">
-      <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-primary/10 rounded-full blur-[120px] pointer-events-none" />
+      {/* Background Glows (คงโทนสีเขียวเดิม #1e7a4f) */}
+      <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-[#1e7a4f]/10 rounded-full blur-[120px] pointer-events-none" />
       <div className="absolute bottom-[-20%] right-[-10%] w-[55%] h-[55%] bg-emerald-500/5 rounded-full blur-[120px] pointer-events-none" />
 
       <TeacherNav />
 
       <main className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 md:px-10 py-8">
-        {/* Header */}
+        {/* Header (คงฟอนต์ สไตล์ และการ์ดมุมโค้งเดิม) */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6 animate-fade-in-up">
           <div>
             <div className="flex items-center gap-2 mb-1">
               <h1 className="text-2xl sm:text-3xl font-extrabold text-foreground">ผู้ช่วยสอน AI สำหรับคุณครู</h1>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-primary/15 text-primary border border-primary/20">
-                AI Powered
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#1e7a4f]/15 text-[#1e7a4f] border border-[#1e7a4f]/25">
+                LangMind Powered
               </span>
             </div>
             <p className="text-xs sm:text-sm text-muted-foreground">
-              ช่วยครูคิดแผนการสอนเชิงรุก (Active Learning) และจัดทำข้อตกลงประเมินวิทยฐานะ ว.PA
+              เชื่อมต่อ AI Agent ช่วยคุณครูคิดแผนการสอน จัดการวิทยฐานะ ว.PA และร่างเอกสารราชการ
             </p>
           </div>
         </div>
 
-        {/* Tab Navigation */}
+        {/* Tab Navigation (คงแถบเมนูและแท็บทั้ง 3 เดิม) */}
         <div className="flex border-b border-border bg-card/60 backdrop-blur-md rounded-t-2xl p-1.5 gap-1 mb-6">
           <button
             onClick={() => setActiveTab("lesson-plan")}
             className={`flex-1 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
               activeTab === "lesson-plan"
-                ? "bg-primary text-primary-foreground shadow-sm shadow-primary/25"
+                ? "bg-[#1e7a4f] text-white shadow-sm shadow-[#1e7a4f]/25"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
             }`}
           >
@@ -246,7 +202,7 @@ export default function TeacherAiAssistant() {
             onClick={() => setActiveTab("pa-evaluation")}
             className={`flex-1 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
               activeTab === "pa-evaluation"
-                ? "bg-primary text-primary-foreground shadow-sm shadow-primary/25"
+                ? "bg-[#1e7a4f] text-white shadow-sm shadow-[#1e7a4f]/25"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
             }`}
           >
@@ -258,7 +214,7 @@ export default function TeacherAiAssistant() {
             onClick={() => setActiveTab("general-chat")}
             className={`flex-1 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
               activeTab === "general-chat"
-                ? "bg-primary text-primary-foreground shadow-sm shadow-primary/25"
+                ? "bg-[#1e7a4f] text-white shadow-sm shadow-[#1e7a4f]/25"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
             }`}
           >
@@ -267,70 +223,103 @@ export default function TeacherAiAssistant() {
           </button>
         </div>
 
-        {/* TAB 1: LESSON PLAN GENERATOR */}
+        {/* =================================================================== */}
+        {/* TAB [A]: ช่วยคิดแผนการสอน                                             */}
+        {/* =================================================================== */}
         {activeTab === "lesson-plan" && (
           <div className="space-y-6 animate-fade-in-up">
             <div className="glass-panel rounded-3xl p-6 sm:p-8">
               <div className="flex items-center gap-2.5 mb-4 pb-2 border-b border-border/40">
-                <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center text-sm">
+                <div className="w-8 h-8 rounded-lg bg-[#1e7a4f]/10 text-[#1e7a4f] flex items-center justify-center text-sm">
                   <i className="fa-solid fa-wand-magic-sparkles" />
                 </div>
                 <div>
                   <h2 className="font-bold text-foreground text-sm sm:text-base">ตั้งค่าแผนการจัดการเรียนรู้</h2>
-                  <p className="text-xs text-muted-foreground">กำหนดเป้าหมายการสอนเพื่อให้ AI สร้างแผนการสอนที่สมบูรณ์</p>
+                  <p className="text-xs text-muted-foreground">กำหนดเป้าหมายการสอนเพื่อให้ AI ร่างแผนการจัดการเรียนรู้ฉบับสมบูรณ์</p>
                 </div>
               </div>
 
               <form onSubmit={handleGenerateLessonPlan} className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold text-foreground mb-1.5">กลุ่มสาระการเรียนรู้</label>
+                    <label className="block text-xs font-semibold text-foreground mb-1.5">
+                      กลุ่มสาระการเรียนรู้ <span className="text-rose-500">*</span>
+                    </label>
                     <select
                       value={planSubject}
-                      onChange={(e) => setPlanSubject(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border text-foreground text-sm"
+                      onChange={(e) => {
+                        setPlanSubject(e.target.value);
+                        setPlanErrors((prev) => ({ ...prev, subject: undefined }));
+                      }}
+                      className={`w-full px-3.5 py-2.5 rounded-xl bg-background/80 border text-foreground text-sm ${
+                        planErrors.subject ? "border-rose-500 ring-1 ring-rose-500" : "border-border"
+                      }`}
                     >
-                      <option>วิทยาศาสตร์และเทคโนโลยี</option>
-                      <option>คณิตศาสตร์</option>
-                      <option>ภาษาไทย</option>
-                      <option>ภาษาต่างประเทศ (ภาษาอังกฤษ)</option>
-                      <option>สังคมศึกษา ศาสนา และวัฒนธรรม</option>
-                      <option>สุขศึกษาและพลศึกษา</option>
-                      <option>ศิลปะ (ทัศนศิลป์/ดนตรี/นาฏศิลป์)</option>
-                      <option>การงานอาชีพ</option>
+                      <option value="">-- กรุณาเลือกกลุ่มสาระ --</option>
+                      <option value="วิทยาศาสตร์และเทคโนโลยี">วิทยาศาสตร์และเทคโนโลยี</option>
+                      <option value="คณิตศาสตร์">คณิตศาสตร์</option>
+                      <option value="ภาษาไทย">ภาษาไทย</option>
+                      <option value="ภาษาต่างประเทศ (ภาษาอังกฤษ)">ภาษาต่างประเทศ (ภาษาอังกฤษ)</option>
+                      <option value="สังคมศึกษา ศาสนา และวัฒนธรรม">สังคมศึกษา ศาสนา และวัฒนธรรม</option>
+                      <option value="สุขศึกษาและพลศึกษา">สุขศึกษาและพลศึกษา</option>
+                      <option value="ศิลปะ (ทัศนศิลป์/ดนตรี/นาฏศิลป์)">ศิลปะ (ทัศนศิลป์/ดนตรี/นาฏศิลป์)</option>
+                      <option value="การงานอาชีพ">การงานอาชีพ</option>
                     </select>
+                    {planErrors.subject && (
+                      <p className="text-xs text-rose-500 mt-1 font-medium">{planErrors.subject}</p>
+                    )}
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-foreground mb-1.5">ระดับชั้น</label>
+                    <label className="block text-xs font-semibold text-foreground mb-1.5">
+                      ระดับชั้น <span className="text-rose-500">*</span>
+                    </label>
                     <select
                       value={planGrade}
-                      onChange={(e) => setPlanGrade(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border text-foreground text-sm"
+                      onChange={(e) => {
+                        setPlanGrade(e.target.value);
+                        setPlanErrors((prev) => ({ ...prev, grade: undefined }));
+                      }}
+                      className={`w-full px-3.5 py-2.5 rounded-xl bg-background/80 border text-foreground text-sm ${
+                        planErrors.grade ? "border-rose-500 ring-1 ring-rose-500" : "border-border"
+                      }`}
                     >
-                      <option>ประถมศึกษาปีที่ 1 - 3 (ปฐมวัย/ประถมต้น)</option>
-                      <option>ประถมศึกษาปีที่ 4 - 6 (ประถมปลาย)</option>
-                      <option>มัธยมศึกษาปีที่ 1</option>
-                      <option>มัธยมศึกษาปีที่ 2</option>
-                      <option>มัธยมศึกษาปีที่ 3</option>
-                      <option>มัธยมศึกษาปีที่ 4</option>
-                      <option>มัธยมศึกษาปีที่ 5</option>
-                      <option>มัธยมศึกษาปีที่ 6</option>
+                      <option value="">-- กรุณาเลือกระดับชั้น --</option>
+                      <option value="ประถมศึกษาปีที่ 1 - 3 (ปฐมวัย/ประถมต้น)">ประถมศึกษาปีที่ 1 - 3 (ปฐมวัย/ประถมต้น)</option>
+                      <option value="ประถมศึกษาปีที่ 4 - 6 (ประถมปลาย)">ประถมศึกษาปีที่ 4 - 6 (ประถมปลาย)</option>
+                      <option value="มัธยมศึกษาปีที่ 1">มัธยมศึกษาปีที่ 1</option>
+                      <option value="มัธยมศึกษาปีที่ 2">มัธยมศึกษาปีที่ 2</option>
+                      <option value="มัธยมศึกษาปีที่ 3">มัธยมศึกษาปีที่ 3</option>
+                      <option value="มัธยมศึกษาปีที่ 4">มัธยมศึกษาปีที่ 4</option>
+                      <option value="มัธยมศึกษาปีที่ 5">มัธยมศึกษาปีที่ 5</option>
+                      <option value="มัธยมศึกษาปีที่ 6">มัธยมศึกษาปีที่ 6</option>
                     </select>
+                    {planErrors.grade && (
+                      <p className="text-xs text-rose-500 mt-1 font-medium">{planErrors.grade}</p>
+                    )}
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold text-foreground mb-1.5">หน่วยการเรียนรู้ / เรื่องที่สอน</label>
+                    <label className="block text-xs font-semibold text-foreground mb-1.5">
+                      หน่วยการเรียนรู้ / เรื่องที่สอน <span className="text-rose-500">*</span>
+                    </label>
                     <input
                       type="text"
-                      required
                       value={planTopic}
-                      onChange={(e) => setPlanTopic(e.target.value)}
+                      onChange={(e) => {
+                        setPlanTopic(e.target.value);
+                        setPlanErrors((prev) => ({ ...prev, topic: undefined }));
+                      }}
                       placeholder="เช่น ระบบสุริยะ, การบวกเศษส่วน, การเขียนจดหมาย..."
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border text-foreground text-sm"
+                      className={`w-full px-3.5 py-2.5 rounded-xl bg-background/80 border text-foreground text-sm ${
+                        planErrors.topic ? "border-rose-500 ring-1 ring-rose-500" : "border-border"
+                      }`}
                     />
+                    {planErrors.topic && (
+                      <p className="text-xs text-rose-500 mt-1 font-medium">{planErrors.topic}</p>
+                    )}
                   </div>
 
                   <div>
@@ -340,255 +329,330 @@ export default function TeacherAiAssistant() {
                       onChange={(e) => setPlanModel(e.target.value)}
                       className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border text-foreground text-sm"
                     >
-                      <option>Active Learning (การจัดการเรียนรู้เชิงรุก)</option>
-                      <option>5E Instructional Model (กระบวนการสืบเสาะหาความรู้ 5 ขั้น)</option>
-                      <option>Problem-Based Learning (PBL - ใช้ปัญหาเป็นฐาน)</option>
-                      <option>Game-Based Learning (การเรียนรู้โดยใช้เกม)</option>
-                      <option>CIPPA Model (กระบวนการเรียนรู้เน้นผู้เรียนเป็นสำคัญ)</option>
+                      <option value="Active Learning (การจัดการเรียนรู้เชิงรุก)">Active Learning (การจัดการเรียนรู้เชิงรุก)</option>
+                      <option value="5E Instructional Model (กระบวนการสืบเสาะหาความรู้ 5 ขั้น)">5E Instructional Model (กระบวนการสืบเสาะหาความรู้ 5 ขั้น)</option>
+                      <option value="Problem-Based Learning (PBL - ใช้ปัญหาเป็นฐาน)">Problem-Based Learning (PBL - ใช้ปัญหาเป็นฐาน)</option>
+                      <option value="Game-Based Learning (การเรียนรู้โดยใช้เกม)">Game-Based Learning (การเรียนรู้โดยใช้เกม)</option>
+                      <option value="CIPPA Model (กระบวนการเรียนรู้เน้นผู้เรียนเป็นสำคัญ)">CIPPA Model (กระบวนการเรียนรู้เน้นผู้เรียนเป็นสำคัญ)</option>
                     </select>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-foreground mb-1.5">มาตรฐานการเรียนรู้ / ตัวชี้วัด (ระบุหรือไม่ระบุก็ได้)</label>
+                  <label className="block text-xs font-semibold text-foreground mb-1.5">
+                    มาตรฐานการเรียนรู้ / ตัวชี้วัด (ระบุหรือไม่ระบุก็ได้)
+                  </label>
                   <input
                     type="text"
                     value={planStandard}
                     onChange={(e) => setPlanStandard(e.target.value)}
-                    placeholder="เช่น ว 3.1 ม.3/1 หรือ ท 1.1 ป.4/2"
+                    placeholder="เช่น ว 3.1 ม.3/1 หรือ ท 1.1 ป.4/2 (หากเว้นว่าง ระบบจะให้ AI คัดเลือกให้ตรงหลักสูตร)"
                     className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border text-foreground text-sm"
                   />
                 </div>
 
                 <button
                   type="submit"
-                  disabled={generatingPlan}
-                  className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition shadow-md shadow-primary/25 disabled:opacity-60 cursor-pointer flex items-center justify-center gap-2"
+                  className="w-full py-3 rounded-xl bg-[#1e7a4f] text-white font-semibold text-sm hover:bg-[#17633f] transition shadow-md shadow-[#1e7a4f]/25 cursor-pointer flex items-center justify-center gap-2"
                 >
-                  {generatingPlan ? (
-                    <>
-                      <i className="fa-solid fa-circle-notch fa-spin text-sm" /> กำลังประมวลผลและสร้างแผนการสอน...
-                    </>
-                  ) : (
-                    <>
-                      <i className="fa-solid fa-wand-magic-sparkles text-sm" /> สร้างแผนการสอนฉบับสมบูรณ์
-                    </>
-                  )}
+                  <i className="fa-solid fa-wand-magic-sparkles text-sm" /> สร้างแผนการสอนฉบับสมบูรณ์
                 </button>
               </form>
             </div>
 
-            {/* Generated Plan Output */}
-            {planOutput && (
-              <div className="glass-panel rounded-3xl p-6 sm:p-8 animate-fade-in-up">
-                <div className="flex items-center justify-between pb-4 mb-4 border-b border-border/60">
-                  <span className="font-bold text-foreground text-sm flex items-center gap-2">
-                    <i className="fa-solid fa-circle-check text-emerald-600" /> แผนการสอนที่สร้างขึ้น
-                  </span>
+            {/* กล่องผลลัพธ์ใต้ปุ่ม (การ์ดสีเขียวอ่อน พร้อมข้อความแนะนำ Ctrl+V, กล่องข้อความ และปุ่มคัดลอก/เปิดซ้ำ) */}
+            {planPromptOutput && (
+              <div className="bg-[#f0fdf4] border border-[#bbf7d0] dark:bg-emerald-950/20 dark:border-emerald-500/30 rounded-3xl p-6 sm:p-7 space-y-4 animate-fade-in-up shadow-sm">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5 text-emerald-800 dark:text-emerald-300 font-bold text-sm">
+                    <span className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs shrink-0">
+                      <i className="fa-solid fa-check" />
+                    </span>
+                    <span>✅ คัดลอกคำสั่งแล้ว — ในหน้าต่างแชตที่เปิดขึ้น กด Ctrl+V แล้วกด Enter</span>
+                  </div>
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => handleCopy(planOutput)}
-                      className="px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-foreground text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                      type="button"
+                      onClick={() => {
+                        copyToClipboard(planPromptOutput);
+                        notifyCopied();
+                      }}
+                      className="px-3.5 py-1.5 rounded-xl border border-[#1e7a4f] text-[#1e7a4f] dark:text-emerald-400 dark:border-emerald-500 bg-white dark:bg-slate-900 text-xs font-semibold hover:bg-[#1e7a4f]/10 transition flex items-center gap-1.5 cursor-pointer shadow-xs"
                     >
-                      <i className="fa-solid fa-copy text-primary" /> คัดลอก
+                      <i className="fa-solid fa-copy" /> คัดลอกอีกครั้ง
                     </button>
                     <button
-                      onClick={() => window.print()}
-                      className="px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-foreground text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                      type="button"
+                      onClick={() => openAgent("plan", planPromptOutput)}
+                      className="px-3.5 py-1.5 rounded-xl bg-[#1e7a4f] text-white text-xs font-semibold hover:bg-[#17633f] transition flex items-center gap-1.5 cursor-pointer shadow-xs"
                     >
-                      <i className="fa-solid fa-print text-primary" /> พิมพ์
+                      <i className="fa-solid fa-arrow-up-right-from-square" /> เปิดหน้าต่างแชตอีกครั้ง
                     </button>
                   </div>
                 </div>
 
-                <div className="prose dark:prose-invert max-w-none text-xs sm:text-sm whitespace-pre-wrap leading-relaxed font-sans bg-background/50 p-5 rounded-2xl border border-border/40">
-                  {planOutput}
+                <div>
+                  <label className="block text-xs font-semibold text-emerald-900 dark:text-emerald-300 mb-1.5">
+                    ข้อความคำสั่งที่สร้างขึ้น (สามารถดูหรือแก้ไขเพิ่มเติมได้):
+                  </label>
+                  <textarea
+                    readOnly
+                    rows={6}
+                    value={planPromptOutput}
+                    className="w-full p-4 rounded-2xl bg-white dark:bg-slate-900/90 border border-emerald-200 dark:border-emerald-800 text-slate-800 dark:text-slate-100 text-xs sm:text-sm font-sans leading-relaxed focus:outline-none resize-y"
+                  />
                 </div>
               </div>
             )}
           </div>
         )}
 
-        {/* TAB 2: PA EVALUATION */}
+        {/* =================================================================== */}
+        {/* TAB [B]: จัดการประเมินวิทยฐานะ (ว.PA)                                */}
+        {/* =================================================================== */}
         {activeTab === "pa-evaluation" && (
           <div className="space-y-6 animate-fade-in-up">
             <div className="glass-panel rounded-3xl p-6 sm:p-8">
               <div className="flex items-center gap-2.5 mb-4 pb-2 border-b border-border/40">
-                <div className="w-8 h-8 rounded-lg bg-emerald-600/10 text-emerald-600 flex items-center justify-center text-sm">
+                <div className="w-8 h-8 rounded-lg bg-[#1e7a4f]/10 text-[#1e7a4f] flex items-center justify-center text-sm">
                   <i className="fa-solid fa-award" />
                 </div>
                 <div>
-                  <h2 className="font-bold text-foreground text-sm sm:text-base">ระบบช่วยจัดทำเอกสารวิทยฐานะ ว.PA</h2>
-                  <p className="text-xs text-muted-foreground">เขียนข้อตกลงในการพัฒนางาน (PA) และประเด็นท้าทายตามเกณฑ์ ก.ค.ศ.</p>
+                  <h2 className="font-bold text-foreground text-sm sm:text-base">ระบบผู้ช่วยประเมินวิทยฐานะและธุรการ (ว.PA)</h2>
+                  <p className="text-xs text-muted-foreground">
+                    เชื่อมต่อ AI Agent เฉพาะทางสำหรับเกณฑ์ ก.ค.ศ., ข้อตกลง PA, ประเด็นท้าทาย และระบบ DPA
+                  </p>
                 </div>
               </div>
 
-              <form onSubmit={handleGeneratePa} className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-foreground mb-1.5">ระดับวิทยฐานะที่ประเมิน</label>
-                    <select
-                      value={paRank}
-                      onChange={(e) => setPaRank(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border text-foreground text-sm"
+              {/* การ์ดคำถามสำเร็จรูป 6 ปุ่ม */}
+              <div className="space-y-3 mb-6">
+                <label className="block text-xs font-bold text-foreground flex items-center gap-1.5">
+                  <i className="fa-solid fa-bolt text-amber-500" />
+                  <span>เลือกคำถามสำเร็จรูปยอดนิยม (คลิกแล้วเปิด AI ทันที):</span>
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {PA_PRESET_QUESTIONS.map((question, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => handleSendPaQuestion(question)}
+                      className="text-left p-3.5 rounded-2xl border border-border bg-card/80 hover:border-[#1e7a4f] hover:bg-[#1e7a4f]/5 text-xs sm:text-sm font-medium text-foreground transition-all flex items-start gap-2.5 cursor-pointer shadow-xs group"
                     >
-                      <option>ครู (ยังไม่มีวิทยฐานะ - คศ.1)</option>
-                      <option>ครูชำนาญการ (คศ.2)</option>
-                      <option>ชำนาญการพิเศษ (คศ.3)</option>
-                      <option>ครูเชี่ยวชาญ (คศ.4)</option>
-                      <option>ครูเชี่ยวชาญพิเศษ (คศ.5)</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-foreground mb-1.5">ประเภทเอกสาร</label>
-                    <select
-                      value={paTopicType}
-                      onChange={(e) => setPaTopicType(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border text-foreground text-sm"
-                    >
-                      <option value="challenge-issue">ประเด็นท้าทายในการพัฒนาผลลัพธ์การเรียนรู้ (Challenge Issue)</option>
-                      <option value="pa-1">ข้อตกลงในการพัฒนางานตามมาตรฐานตำแหน่ง (PA 1/ส)</option>
-                      <option value="dpa-video">แนวทางการเตรียมคลิปวิดีโอการสอนและแผนการสอน (DPA ว9)</option>
-                    </select>
-                  </div>
+                      <span className="w-6 h-6 rounded-lg bg-emerald-100 text-[#1e7a4f] dark:bg-emerald-950 dark:text-emerald-400 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 group-hover:bg-[#1e7a4f] group-hover:text-white transition">
+                        {idx + 1}
+                      </span>
+                      <span className="flex-1 leading-snug">{question}</span>
+                      <i className="fa-solid fa-arrow-up-right-from-square text-xs text-muted-foreground group-hover:text-[#1e7a4f] transition shrink-0 mt-1" />
+                    </button>
+                  ))}
                 </div>
+              </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-foreground mb-1.5">กลุ่มสาระการเรียนรู้</label>
-                    <input
-                      type="text"
-                      value={paSubject}
-                      onChange={(e) => setPaSubject(e.target.value)}
-                      placeholder="เช่น คณิตศาสตร์, วิทยาศาสตร์..."
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border text-foreground text-sm"
-                    />
+              {/* ช่องพิมพ์คำถามเอง */}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleSendPaQuestion(paCustomPrompt);
+                }}
+                className="space-y-3 pt-4 border-t border-border/60"
+              >
+                <label className="block text-xs font-bold text-foreground">
+                  หรือพิมพ์ประเด็นคำถาม ว.PA ที่ต้องการปรึกษาด้วยตนเอง:
+                </label>
+                <div className="flex flex-col sm:flex-row gap-2.5">
+                  <input
+                    type="text"
+                    value={paCustomPrompt}
+                    onChange={(e) => setPaCustomPrompt(e.target.value)}
+                    placeholder="เช่น ช่วยร่างประเด็นท้าทายวิชาภาษาไทย ม.1 เรื่องการอ่านจับใจความสำคัญ..."
+                    className="flex-1 px-4 py-2.5 rounded-xl bg-background/80 border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-[#1e7a4f]"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!paCustomPrompt.trim()}
+                    className="px-6 py-2.5 rounded-xl bg-[#1e7a4f] text-white font-semibold text-sm hover:bg-[#17633f] transition shadow-md shadow-[#1e7a4f]/25 disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    <i className="fa-solid fa-paper-plane text-xs" />
+                    <span>ถาม AI</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* กล่องผลลัพธ์คำถามที่คัดลอกแล้ว */}
+            {paPromptOutput && (
+              <div className="bg-[#f0fdf4] border border-[#bbf7d0] dark:bg-emerald-950/20 dark:border-emerald-500/30 rounded-3xl p-6 sm:p-7 space-y-4 animate-fade-in-up shadow-sm">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5 text-emerald-800 dark:text-emerald-300 font-bold text-sm">
+                    <span className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs shrink-0">
+                      <i className="fa-solid fa-check" />
+                    </span>
+                    <span>✅ คัดลอกคำสั่งแล้ว — ในหน้าต่างแชตที่เปิดขึ้น กด Ctrl+V แล้วกด Enter</span>
                   </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-foreground mb-1.5">ระดับชั้นที่สอน</label>
-                    <input
-                      type="text"
-                      value={paGrade}
-                      onChange={(e) => setPaGrade(e.target.value)}
-                      placeholder="เช่น มัธยมศึกษาปีที่ 2"
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border text-foreground text-sm"
-                    />
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        copyToClipboard(paPromptOutput);
+                        notifyCopied();
+                      }}
+                      className="px-3.5 py-1.5 rounded-xl border border-[#1e7a4f] text-[#1e7a4f] dark:text-emerald-400 dark:border-emerald-500 bg-white dark:bg-slate-900 text-xs font-semibold hover:bg-[#1e7a4f]/10 transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <i className="fa-solid fa-copy" /> คัดลอกอีกครั้ง
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openAgent("pa", paPromptOutput)}
+                      className="px-3.5 py-1.5 rounded-xl bg-[#1e7a4f] text-white text-xs font-semibold hover:bg-[#17633f] transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <i className="fa-solid fa-arrow-up-right-from-square" /> เปิดหน้าต่างแชตอีกครั้ง
+                    </button>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-foreground mb-1.5">เรื่อง / สภาพปัญหา หรือ นวัตกรรมที่ต้องการพัฒนา</label>
                   <textarea
+                    readOnly
                     rows={3}
-                    value={paFocus}
-                    onChange={(e) => setPaFocus(e.target.value)}
-                    placeholder="เช่น การพัฒนาผลสัมฤทธิ์ทางการเรียนเรื่องการแก้โจทย์ปัญหาโดยใช้เทคนิค Active Learning และเกมมิฟิเคชัน..."
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border text-foreground text-sm"
+                    value={paPromptOutput}
+                    className="w-full p-4 rounded-2xl bg-white dark:bg-slate-900/90 border border-emerald-200 dark:border-emerald-800 text-slate-800 dark:text-slate-100 text-xs sm:text-sm font-sans leading-relaxed focus:outline-none resize-y"
                   />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={generatingPa}
-                  className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm transition shadow-md shadow-emerald-600/25 disabled:opacity-60 cursor-pointer flex items-center justify-center gap-2"
-                >
-                  {generatingPa ? (
-                    <>
-                      <i className="fa-solid fa-circle-notch fa-spin text-sm" /> กำลังประมวลผลตามเกณฑ์ ก.ค.ศ...
-                    </>
-                  ) : (
-                    <>
-                      <i className="fa-solid fa-award text-sm" /> จัดทำเอกสาร ว.PA ทันที
-                    </>
-                  )}
-                </button>
-              </form>
-            </div>
-
-            {/* Generated PA Output */}
-            {paOutput && (
-              <div className="glass-panel rounded-3xl p-6 sm:p-8 animate-fade-in-up">
-                <div className="flex items-center justify-between pb-4 mb-4 border-b border-border/60">
-                  <span className="font-bold text-foreground text-sm flex items-center gap-2">
-                    <i className="fa-solid fa-circle-check text-emerald-600" /> เอกสาร ว.PA ที่สร้างขึ้น
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleCopy(paOutput)}
-                      className="px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-foreground text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-                    >
-                      <i className="fa-solid fa-copy text-primary" /> คัดลอก
-                    </button>
-                    <button
-                      onClick={() => window.print()}
-                      className="px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-foreground text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-                    >
-                      <i className="fa-solid fa-print text-primary" /> พิมพ์
-                    </button>
-                  </div>
-                </div>
-
-                <div className="prose dark:prose-invert max-w-none text-xs sm:text-sm whitespace-pre-wrap leading-relaxed font-sans bg-background/50 p-5 rounded-2xl border border-border/40">
-                  {paOutput}
                 </div>
               </div>
             )}
           </div>
         )}
 
-        {/* TAB 3: GENERAL CHAT & COMPANION */}
+        {/* =================================================================== */}
+        {/* TAB [C]: ปรึกษา AI ทั่วไป (การ์ด 4 ใบ + กล่องคำถามเลือก Agent)            */}
+        {/* =================================================================== */}
         {activeTab === "general-chat" && (
-          <div className="space-y-4 animate-fade-in-up">
-            <div className="glass-panel rounded-3xl p-6 flex flex-col h-[520px]">
-              <div className="flex-1 overflow-y-auto space-y-3.5 pr-2">
-                {chatHistory.map((msg, idx) => (
-                  <div
-                    key={idx}
-                    className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
-                  >
-                    <div
-                      className={`max-w-[85%] rounded-2xl p-4 text-xs sm:text-sm leading-relaxed whitespace-pre-wrap ${
-                        msg.role === "user"
-                          ? "bg-primary text-primary-foreground rounded-tr-none"
-                          : "bg-muted/60 text-foreground border border-border/60 rounded-tl-none"
-                      }`}
-                    >
-                      {msg.text}
+          <div className="space-y-6 animate-fade-in-up">
+            {/* ตารางการ์ด 4 ใบสำหรับ Agent ทั้ง 4 ด้าน */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {GENERAL_AGENTS.map((agent) => (
+                <div
+                  key={agent.key}
+                  className="bg-card rounded-3xl p-5 border border-border hover:border-[#1e7a4f] hover:shadow-md transition-all flex flex-col justify-between gap-4"
+                >
+                  <div className="space-y-2.5">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-lg border ${agent.color}`}>
+                        <i className={agent.icon} />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-foreground text-sm sm:text-base leading-tight">{agent.name}</h3>
+                        <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-mono">
+                          Agent: {agent.key}
+                        </span>
+                      </div>
                     </div>
-                    <span className="text-[10px] text-muted-foreground mt-1 px-1">
-                      {msg.role === "user" ? "คุณครู" : "AI ผู้ช่วยสอน"} • {msg.time}
-                    </span>
+                    <p className="text-xs text-muted-foreground leading-relaxed pl-1">{agent.description}</p>
                   </div>
-                ))}
 
-                {thinkingChat && (
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground p-3 bg-muted/40 rounded-xl w-fit">
-                    <i className="fa-solid fa-circle-notch fa-spin text-primary" />
-                    <span>AI กำลังคิดคำตอบ...</span>
+                  <div className="pt-2 border-t border-border/50">
+                    <button
+                      type="button"
+                      onClick={() => openAgent(agent.key)}
+                      className="w-full py-2 px-3 rounded-xl border-1.5 border-[#1e7a4f] text-[#1e7a4f] hover:bg-[#1e7a4f] hover:text-white font-semibold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-2xs"
+                    >
+                      <i className="fa-solid fa-arrow-up-right-from-square text-xs" />
+                      <span>เปิดแชต</span>
+                    </button>
                   </div>
-                )}
+                </div>
+              ))}
+            </div>
+
+            {/* ช่องพิมพ์คำถามเองพร้อม Dropdown เลือก Agent */}
+            <div className="glass-panel rounded-3xl p-6 sm:p-7">
+              <div className="flex items-center gap-2.5 mb-4 pb-2 border-b border-border/40">
+                <i className="fa-solid fa-comments text-[#1e7a4f] text-base" />
+                <h3 className="font-bold text-foreground text-sm sm:text-base">พิมพ์คำถามตรงไปยัง AI Agent</h3>
               </div>
 
-              <form onSubmit={handleChatSubmit} className="pt-4 border-t border-border/60 flex items-center gap-2">
-                <input
-                  type="text"
-                  value={chatPrompt}
-                  onChange={(e) => setChatPrompt(e.target.value)}
-                  placeholder="พิมพ์ข้อความ เช่น 'ช่วยออกข้อสอบ 5 ข้อ เรื่องแรงเสียดทาน'..."
-                  className="flex-1 px-4 py-2.5 rounded-xl bg-background/80 border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/80"
-                />
+              <form onSubmit={handleSendGeneralQuestion} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="sm:col-span-1">
+                    <label className="block text-xs font-semibold text-foreground mb-1.5">เลือก Agent ผู้ช่วย</label>
+                    <select
+                      value={selectedChatAgent}
+                      onChange={(e) => setSelectedChatAgent(e.target.value as AgentKey)}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-background/80 border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-[#1e7a4f]"
+                    >
+                      <option value="pa">ธุรการและวิทยฐานะครู (pa)</option>
+                      <option value="docs">เอกสารราชการ/ใบลา (docs)</option>
+                      <option value="read">อ่านและสรุปหนังสือ (read)</option>
+                      <option value="parent">ปรึกษาผู้ปกครอง (parent)</option>
+                      <option value="plan">แผนการสอน (plan)</option>
+                    </select>
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-semibold text-foreground mb-1.5">คำถามหรือข้อความที่ต้องการปรึกษา</label>
+                    <input
+                      type="text"
+                      value={generalPrompt}
+                      onChange={(e) => setGeneralPrompt(e.target.value)}
+                      placeholder="เช่น ช่วยร่างบันทึกข้อความขออนุมัติจัดโครงการทัศนศึกษา..."
+                      className="w-full px-4 py-2.5 rounded-xl bg-background/80 border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-[#1e7a4f]"
+                    />
+                  </div>
+                </div>
+
                 <button
                   type="submit"
-                  disabled={thinkingChat || !chatPrompt.trim()}
-                  className="px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-xs transition disabled:opacity-50 cursor-pointer shadow-xs flex items-center gap-1.5"
+                  disabled={!generalPrompt.trim()}
+                  className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-[#1e7a4f] text-white font-semibold text-sm hover:bg-[#17633f] transition shadow-md shadow-[#1e7a4f]/25 disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
                 >
-                  <i className="fa-solid fa-paper-plane" />
-                  <span>ส่ง</span>
+                  <i className="fa-solid fa-paper-plane text-xs" />
+                  <span>ส่งคำถาม &amp; เปิดแชต</span>
                 </button>
               </form>
             </div>
+
+            {/* กล่องผลลัพธ์การคัดลอกของแท็บทั่วไป */}
+            {generalPromptOutput && (
+              <div className="bg-[#f0fdf4] border border-[#bbf7d0] dark:bg-emerald-950/20 dark:border-emerald-500/30 rounded-3xl p-6 sm:p-7 space-y-4 animate-fade-in-up shadow-sm">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5 text-emerald-800 dark:text-emerald-300 font-bold text-sm">
+                    <span className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs shrink-0">
+                      <i className="fa-solid fa-check" />
+                    </span>
+                    <span>✅ คัดลอกคำสั่งแล้ว — ในหน้าต่างแชตที่เปิดขึ้น กด Ctrl+V แล้วกด Enter</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        copyToClipboard(generalPromptOutput);
+                        notifyCopied();
+                      }}
+                      className="px-3.5 py-1.5 rounded-xl border border-[#1e7a4f] text-[#1e7a4f] dark:text-emerald-400 dark:border-emerald-500 bg-white dark:bg-slate-900 text-xs font-semibold hover:bg-[#1e7a4f]/10 transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <i className="fa-solid fa-copy" /> คัดลอกอีกครั้ง
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openAgent(selectedChatAgent, generalPromptOutput)}
+                      className="px-3.5 py-1.5 rounded-xl bg-[#1e7a4f] text-white text-xs font-semibold hover:bg-[#17633f] transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <i className="fa-solid fa-arrow-up-right-from-square" /> เปิดหน้าต่างแชตอีกครั้ง
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <textarea
+                    readOnly
+                    rows={3}
+                    value={generalPromptOutput}
+                    className="w-full p-4 rounded-2xl bg-white dark:bg-slate-900/90 border border-emerald-200 dark:border-emerald-800 text-slate-800 dark:text-slate-100 text-xs sm:text-sm font-sans leading-relaxed focus:outline-none resize-y"
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
       </main>

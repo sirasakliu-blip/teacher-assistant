@@ -1,0 +1,84 @@
+/**
+ * ai-assistant.css
+ * ส่วนเสริมสไตล์สำหรับหน้า "ผู้ช่วยสอน AI" ของ EduConnect360
+ * โทนสีเขียวแบรนด์หลัก (#1e7a4f), การ์ดมุมโค้ง, กล่องข้อความ และปุ่มสไตล์ Outline
+ */
+
+:root {
+  --color-brand-green: #1e7a4f;
+  --color-brand-green-hover: #17633f;
+  --color-brand-green-light: #e8f5ee;
+  --color-brand-green-border: #a3d9be;
+}
+
+/* กล่องแจ้งเตือนคำสั่งที่คัดลอกแล้ว (การ์ดสีเขียวอ่อน) */
+.ai-copied-card {
+  background-color: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 1.25rem;
+  padding: 1.25rem;
+  transition: all 0.2s ease-in-out;
+}
+
+.dark .ai-copied-card {
+  background-color: rgba(6, 78, 59, 0.2);
+  border-color: rgba(52, 211, 153, 0.3);
+}
+
+/* ปุ่ม Outline สีเขียว #1e7a4f */
+.btn-ai-outline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.75rem;
+  border: 1.5px solid var(--color-brand-green);
+  color: var(--color-brand-green);
+  background-color: transparent;
+  font-weight: 600;
+  font-size: 0.8125rem;
+  transition: all 0.15s ease-in-out;
+  cursor: pointer;
+}
+
+.btn-ai-outline:hover {
+  background-color: var(--color-brand-green-light);
+  color: var(--color-brand-green-hover);
+  border-color: var(--color-brand-green-hover);
+}
+
+.dark .btn-ai-outline {
+  border-color: #34d399;
+  color: #34d399;
+}
+
+.dark .btn-ai-outline:hover {
+  background-color: rgba(52, 211, 153, 0.15);
+  color: #6ee7b7;
+}
+
+/* การ์ดคำถามสำเร็จรูปและ Agent Card */
+.ai-agent-card {
+  border-radius: 1rem;
+  border: 1px solid #e2e8f0;
+  background-color: #ffffff;
+  padding: 1.25rem;
+  transition: all 0.2s ease;
+}
+
+.ai-agent-card:hover {
+  border-color: var(--color-brand-green);
+  box-shadow: 0 4px 12px rgba(30, 122, 79, 0.08);
+  transform: translateY(-2px);
+}
+
+.dark .ai-agent-card {
+  background-color: #1e293b;
+  border-color: #334155;
+}
+
+.dark .ai-agent-card:hover {
+  border-color: #34d399;
+  box-shadow: 0 4px 12px rgba(52, 211, 153, 0.15);
+}

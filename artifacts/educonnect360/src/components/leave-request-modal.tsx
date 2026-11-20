@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { createLeaveRequest } from "@/lib/firestore";
+import { openAgent, copyToClipboard } from "@/lib/ai-assistant";
 import type { LeaveRequest, User } from "@/types";
 
 interface Props {
@@ -45,6 +46,22 @@ export function LeaveRequestModal({
   const endD = new Date(endDate);
   const diffTime = Math.max(0, endD.getTime() - startD.getTime());
   const daysCount = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1);
+
+  async function handleAiDraftLeave() {
+    const leaveTypeTh = type === "sick" ? "ป่วย" : "กิจส่วนตัว";
+    const startStr = startDate || "วันนี้";
+    const endStr = endDate || startDate || "วันนี้";
+    const reasonStr = reason.trim() || (type === "sick" ? "มีอาการป่วย ไม่สบาย" : "มีกิจธุระจำเป็นของครอบครัว");
+    const promptText = `ช่วยร่างใบลา${leaveTypeTh} ตั้งแต่ ${startStr} ถึง ${endStr} เหตุผล ${reasonStr} ตามระเบียบสำนักนายกรัฐมนตรีว่าด้วยการลาของข้าราชการ พ.ศ. 2555 และออกเป็นไฟล์ Word`;
+
+    await copyToClipboard(promptText);
+    openAgent("docs", promptText);
+    toast({
+      title: "คัดลอกคำสั่งแล้ว",
+      description: "นำไปวาง (Ctrl+V) ในหน้าต่างแชต LangMind ที่เปิดขึ้นได้ทันทีครับ",
+      duration: 3000,
+    });
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -294,19 +311,30 @@ export function LeaveRequestModal({
             />
           </div>
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full mt-4 py-3.5 rounded-xl bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition-all shadow-lg shadow-primary/25 disabled:opacity-60 flex items-center justify-center gap-2 text-sm"
-          >
-            {submitting ? (
-              <i className="fa-solid fa-circle-notch fa-spin" />
-            ) : (
-              <>
-                <i className="fa-solid fa-paper-plane" /> บันทึกและยื่นใบลา
-              </>
-            )}
-          </button>
+          <div className="flex flex-col sm:flex-row items-center gap-2.5 mt-4">
+            <button
+              type="button"
+              onClick={handleAiDraftLeave}
+              className="w-full sm:w-auto px-4 py-3.5 rounded-xl border border-[#1e7a4f] text-[#1e7a4f] hover:bg-[#1e7a4f]/10 dark:text-emerald-400 dark:border-emerald-500 font-semibold text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+              title="ให้ AI ร่างใบลาเป็นไฟล์ Word ตามระเบียบสำนักนายกรัฐมนตรี"
+            >
+              <span>✨ ให้ AI ช่วยร่าง</span>
+            </button>
+
+            <button
+              type="submit"
+              disabled={submitting}
+              className="flex-1 w-full py-3.5 rounded-xl bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition-all shadow-lg shadow-primary/25 disabled:opacity-60 flex items-center justify-center gap-2 text-sm cursor-pointer"
+            >
+              {submitting ? (
+                <i className="fa-solid fa-circle-notch fa-spin" />
+              ) : (
+                <>
+                  <i className="fa-solid fa-paper-plane" /> บันทึกและยื่นใบลา
+                </>
+              )}
+            </button>
+          </div>
         </form>
       </div>
     </div>

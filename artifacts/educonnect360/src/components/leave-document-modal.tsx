@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { openAgent, copyToClipboard } from "@/lib/ai-assistant";
+import { useToast } from "@/hooks/use-toast";
 import type { LeaveRequest } from "@/types";
 
 interface Props {
@@ -39,6 +41,23 @@ export function LeaveDocumentModal({
   const writtenDate = parseThaiDate(leave.date);
   const startDate = parseThaiDate(leave.startDate);
   const endDate = parseThaiDate(leave.endDate);
+  const { toast } = useToast();
+
+  async function handleAiDraftDocument() {
+    const leaveTypeTh = leave.type === "sick" ? "ป่วย" : "กิจส่วนตัว";
+    const startStr = leave.startDate || (writtenDate.day ? `${writtenDate.day} ${writtenDate.month} ${writtenDate.year}` : "วันนี้");
+    const endStr = leave.endDate || startStr;
+    const reasonStr = leave.reason || (leave.type === "sick" ? "มีอาการป่วย" : "มีกิจธุระจำเป็น");
+    const promptText = `ช่วยร่างใบลา${leaveTypeTh} ตั้งแต่ ${startStr} ถึง ${endStr} เหตุผล ${reasonStr} ตามระเบียบสำนักนายกรัฐมนตรีว่าด้วยการลาของข้าราชการ พ.ศ. 2555 และออกเป็นไฟล์ Word`;
+
+    await copyToClipboard(promptText);
+    openAgent("docs", promptText);
+    toast({
+      title: "คัดลอกคำสั่งแล้ว",
+      description: "นำไปวาง (Ctrl+V) ในหน้าต่างแชต LangMind ที่เปิดขึ้นได้ทันทีครับ",
+      duration: 3000,
+    });
+  }
 
   function handlePrint() {
     window.print();
@@ -110,6 +129,13 @@ export function LeaveDocumentModal({
               className="px-4 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-all flex items-center gap-1.5 shadow-sm"
             >
               <i className="fa-solid fa-print" /> สั่งพิมพ์ (TH Sarabun A4)
+            </button>
+            <button
+              onClick={handleAiDraftDocument}
+              className="px-3.5 py-1.5 rounded-lg border border-[#1e7a4f] text-[#1e7a4f] hover:bg-[#1e7a4f]/10 dark:text-emerald-400 dark:border-emerald-500 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+              title="ให้ AI ช่วยร่างใบลาเป็นไฟล์ Word ตามระเบียบสำนักนายกรัฐมนตรี"
+            >
+              <span>✨ ให้ AI ช่วยร่าง</span>
             </button>
             <button
               onClick={onClose}
