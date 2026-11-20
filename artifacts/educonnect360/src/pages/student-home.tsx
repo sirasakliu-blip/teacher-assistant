@@ -12,6 +12,7 @@ import type { Class, LeaveRequest } from "@/types";
 import { LeaveRequestModal } from "@/components/leave-request-modal";
 import { LeaveDocumentModal } from "@/components/leave-document-modal";
 import { ChangePasswordModal } from "@/components/change-password-modal";
+import { StudentSchedulePanel } from "@/components/student-schedule-panel";
 
 export default function StudentHome() {
   const { profile, logout } = useAuth();
@@ -106,6 +107,12 @@ export default function StudentHome() {
                 รหัส: {profile.studentId}
               </span>
             )}
+            {profile?.gradeLevel && (
+              <span className="text-xs px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 font-semibold border border-emerald-200 flex items-center gap-1 shadow-2xs">
+                <i className="fa-solid fa-door-open text-[10px] text-emerald-600" />
+                ชั้น {profile.gradeLevel}
+              </span>
+            )}
           </div>
           <button
             onClick={() => setShowChangePassword(true)}
@@ -127,16 +134,23 @@ export default function StudentHome() {
       <main className="relative z-10 max-w-6xl mx-auto px-6 md:px-10 py-10">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 animate-fade-in-up">
           <div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-3xl font-extrabold text-foreground">ห้องเรียนของฉัน</h1>
               {profile?.studentId && (
                 <span className="text-xs px-2.5 py-1 rounded-lg bg-primary/10 text-primary font-mono font-bold border border-primary/20">
                   รหัสนักเรียน: {profile.studentId}
                 </span>
               )}
+              {profile?.gradeLevel && (
+                <span className="text-xs px-3 py-1 rounded-lg bg-emerald-50 text-emerald-800 font-bold border border-emerald-200 flex items-center gap-1.5 shadow-xs">
+                  <i className="fa-solid fa-door-open text-emerald-600" />
+                  ชั้นเรียน / ห้อง: {profile.gradeLevel}
+                </span>
+              )}
             </div>
             <p className="text-muted-foreground mt-1">
-              ยินดีต้อนรับ {profile?.displayName} &middot; เข้าร่วมห้องเรียน เช็คชื่อเข้าเรียน และส่งหนังสือใบลา
+              ยินดีต้อนรับ {profile?.displayName}
+              {profile?.gradeLevel ? ` (นักเรียนชั้น ${profile.gradeLevel})` : ""} &middot; ตรวจสอบตารางเรียน เช็คชื่อเข้าเรียน และส่งหนังสือใบลา
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -158,6 +172,24 @@ export default function StudentHome() {
             >
               <i className="fa-solid fa-key" /> เข้าร่วมด้วยรหัส
             </button>
+          </div>
+        </div>
+
+        {/* Student Daily Class Schedule Panel */}
+        <StudentSchedulePanel
+          gradeLevel={profile?.gradeLevel}
+          studentClasses={classes}
+        />
+
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center text-sm">
+              <i className="fa-solid fa-chalkboard text-xs" />
+            </span>
+            <h2 className="text-lg font-bold text-foreground">วิชาเรียน & ห้องเรียนของฉัน</h2>
+            <span className="text-xs px-2.5 py-0.5 rounded-full bg-muted text-muted-foreground font-semibold">
+              {classes.length} วิชา
+            </span>
           </div>
         </div>
 

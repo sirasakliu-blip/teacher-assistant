@@ -45,6 +45,8 @@ import type {
   LeaveRequest,
   ParentLineLink,
   ParentViewToken,
+  ScheduleItem,
+  DayOfWeek,
   StudentRiskEntry,
   StudentSummary,
   Submission,
@@ -2748,5 +2750,149 @@ export async function bulkImportStudentsAndClasses(
     totalClasses: roomsMap.size,
     classList,
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Student Class Schedule / Timetable                                  */
+/* ------------------------------------------------------------------ */
+
+export function generateDefaultSchedule(
+  gradeLevel: string,
+  studentClasses: Class[] = [],
+): ScheduleItem[] {
+  const norm = normalizeGradeRoom(gradeLevel) || "ม.2/1";
+
+  // Standard secondary school subjects pool
+  const subjectsByDay: Record<DayOfWeek, Array<{ name: string; code: string; room: string; color: ScheduleItem["color"] }>> = {
+    monday: [
+      { name: "ภาษาไทยพื้นฐาน", code: "ท22101", room: "ห้อง 211", color: "blue" },
+      { name: "คณิตศาสตร์พื้นฐาน", code: "ค22101", room: "ห้อง 214", color: "purple" },
+      { name: "วิทยาศาสตร์และเทคโนโลยี", code: "ว22101", room: "LAB วิทย์ 1", color: "emerald" },
+      { name: "สังคมศึกษา ศาสนาฯ", code: "ส22101", room: "ห้อง 211", color: "amber" },
+      { name: "ภาษาอังกฤษพื้นฐาน", code: "อ22101", room: "ห้อง 211", color: "teal" },
+      { name: "สุขศึกษาและพลศึกษา", code: "พ22101", room: "โรงยิม", color: "rose" },
+      { name: "กิจกรรมแนะแนว", code: "ก22901", room: "ห้อง 211", color: "indigo" },
+    ],
+    tuesday: [
+      { name: "ภาษาอังกฤษพื้นฐาน", code: "อ22101", room: "ห้อง 211", color: "teal" },
+      { name: "สังคมศึกษา ศาสนาฯ", code: "ส22101", room: "ห้อง 211", color: "amber" },
+      { name: "คณิตศาสตร์พื้นฐาน", code: "ค22101", room: "ห้อง 214", color: "purple" },
+      { name: "ภาษาไทยพื้นฐาน", code: "ท22101", room: "ห้อง 211", color: "blue" },
+      { name: "วิทยาการคำนวณ", code: "ว22103", room: "ห้องคอม 1", color: "emerald" },
+      { name: "ศิลปะและดนตรี", code: "ศ22101", room: "ห้องดนตรี", color: "rose" },
+      { name: "กิจกรรมชุมนุม/ชมรม", code: "ก22902", room: "ตามกลุ่มกิจกรรม", color: "indigo" },
+    ],
+    wednesday: [
+      { name: "คณิตศาสตร์เพิ่มเติม", code: "ค22201", room: "ห้อง 214", color: "purple" },
+      { name: "วิทยาศาสตร์และเทคโนโลยี", code: "ว22101", room: "LAB วิทย์ 1", color: "emerald" },
+      { name: "ภาษาไทยพื้นฐาน", code: "ท22101", room: "ห้อง 211", color: "blue" },
+      { name: "ประวัติศาสตร์", code: "ส22102", room: "ห้อง 211", color: "amber" },
+      { name: "ภาษาอังกฤษเพื่อการสื่อสาร", code: "อ22201", room: "Sound LAB", color: "teal" },
+      { name: "การงานอาชีพ", code: "ง22101", room: "โรงฝึกงาน", color: "amber" },
+      { name: "กิจกรรมลูกเสือ-เนตรนารี", code: "ก22903", room: "ลานกิจกรรม", color: "indigo" },
+    ],
+    thursday: [
+      { name: "วิทยาศาสตร์และเทคโนโลยี", code: "ว22101", room: "LAB วิทย์ 1", color: "emerald" },
+      { name: "คณิตศาสตร์พื้นฐาน", code: "ค22101", room: "ห้อง 214", color: "purple" },
+      { name: "ภาษาอังกฤษพื้นฐาน", code: "อ22101", room: "ห้อง 211", color: "teal" },
+      { name: "ภาษาไทยพื้นฐาน", code: "ท22101", room: "ห้อง 211", color: "blue" },
+      { name: "การออกแบบและเทคโนโลยี", code: "ว22104", room: "ห้องคอม 2", color: "emerald" },
+      { name: "หน้าที่พลเมือง", code: "ส22201", room: "ห้อง 211", color: "amber" },
+      { name: "โฮมรูมและคุณธรรม", code: "ก22904", room: "ห้อง 211", color: "indigo" },
+    ],
+    friday: [
+      { name: "สังคมศึกษา ศาสนาฯ", code: "ส22101", room: "ห้อง 211", color: "amber" },
+      { name: "ภาษาไทยพื้นฐาน", code: "ท22101", room: "ห้อง 211", color: "blue" },
+      { name: "คณิตศาสตร์พื้นฐาน", code: "ค22101", room: "ห้อง 214", color: "purple" },
+      { name: "ภาษาอังกฤษพื้นฐาน", code: "อ22101", room: "ห้อง 211", color: "teal" },
+      { name: "วิทยาศาสตร์และเทคโนโลยี", code: "ว22101", room: "LAB วิทย์ 1", color: "emerald" },
+      { name: "พลศึกษา (กีฬา)", code: "พ22102", room: "สนามกีฬา", color: "rose" },
+      { name: "สรุปกิจกรรมประจำสัปดาห์", code: "ก22905", room: "ห้อง 211", color: "indigo" },
+    ],
+  };
+
+  const periodTimes = [
+    { period: 1, startTime: "08:30", endTime: "09:20" },
+    { period: 2, startTime: "09:20", endTime: "10:10" },
+    { period: 3, startTime: "10:20", endTime: "11:10" },
+    { period: 4, startTime: "11:10", endTime: "12:00" },
+    { period: 5, startTime: "13:00", endTime: "13:50" },
+    { period: 6, startTime: "13:50", endTime: "14:40" },
+    { period: 7, startTime: "14:40", endTime: "15:30" },
+  ];
+
+  const items: ScheduleItem[] = [];
+  const days: DayOfWeek[] = ["monday", "tuesday", "wednesday", "thursday", "friday"];
+
+  const teacherBySubject: Record<string, string> = {};
+  if (studentClasses && studentClasses.length > 0) {
+    for (const c of studentClasses) {
+      if (c.name && c.teacherName) {
+        teacherBySubject[c.name] = c.teacherName;
+      }
+    }
+  }
+
+  for (const day of days) {
+    const daySubjects = subjectsByDay[day];
+    periodTimes.forEach((pt, idx) => {
+      const subj = daySubjects[idx % daySubjects.length];
+      const matchedTeacher =
+        teacherBySubject[subj.name] ||
+        (studentClasses.length > 0 ? studentClasses[idx % studentClasses.length]?.teacherName : "คุณครูผู้สอน");
+      items.push({
+        id: `${day}_p${pt.period}`,
+        day,
+        period: pt.period,
+        startTime: pt.startTime,
+        endTime: pt.endTime,
+        subjectName: subj.name,
+        subjectCode: subj.code,
+        teacherName: matchedTeacher,
+        room: subj.room,
+        color: subj.color,
+      });
+    });
+  }
+
+  return items;
+}
+
+export async function getClassSchedule(
+  gradeLevel: string,
+  studentClasses: Class[] = [],
+): Promise<ScheduleItem[]> {
+  const database = requireDb();
+  const norm = normalizeGradeRoom(gradeLevel) || "ม.2/1";
+  const docId = norm.replace(/[^a-zA-Z0-9ก-๙]/g, "_");
+
+  try {
+    const snap = await withTimeout(getDoc(doc(database, "schedules", docId)), 4000);
+    if (snap.exists()) {
+      const data = snap.data();
+      if (Array.isArray(data.items) && data.items.length > 0) {
+        return data.items;
+      }
+    }
+  } catch (err) {
+    console.warn("Could not fetch schedule from firestore, using default:", err);
+  }
+
+  return generateDefaultSchedule(norm, studentClasses);
+}
+
+export async function saveClassSchedule(
+  gradeLevel: string,
+  items: ScheduleItem[],
+): Promise<void> {
+  const database = requireDb();
+  const norm = normalizeGradeRoom(gradeLevel) || "ม.2/1";
+  const docId = norm.replace(/[^a-zA-Z0-9ก-๙]/g, "_");
+
+  await setDoc(doc(database, "schedules", docId), {
+    gradeLevel: norm,
+    items,
+    updatedAt: serverTimestamp(),
+  });
 }
 

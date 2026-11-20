@@ -281,4 +281,29 @@ export interface TeacherContact {
   email?: string;
 }
 
+/** Day of week for student class timetable */
+export type DayOfWeek = "monday" | "tuesday" | "wednesday" | "thursday" | "friday";
+
+/** A single timetable slot / period */
+export interface ScheduleItem {
+  id: string;
+  day: DayOfWeek;
+  period: number; // 1, 2, 3...
+  startTime: string; // e.g. "08:30"
+  endTime: string; // e.g. "09:20"
+  subjectName: string; // e.g. "คณิตศาสตร์พื้นฐาน"
+  subjectCode?: string; // e.g. "ค22101"
+  teacherName?: string; // e.g. "ครูสมหมาย"
+  room?: string; // e.g. "ห้อง 214"
+  color?: "emerald" | "blue" | "purple" | "amber" | "rose" | "teal" | "indigo";
+}
+
+/** Class schedule / timetable by grade level or room */
+export interface ClassSchedule {
+  id?: string;
+  gradeLevel: string; // e.g. "ม.2/1"
+  items: ScheduleItem[];
+  updatedAt?: string;
+}
+
 
