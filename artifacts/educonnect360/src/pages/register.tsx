@@ -107,12 +107,11 @@ export default function Register() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
 
-    const cleanEmail = email.trim();
-    if (!cleanEmail) {
+    if (!selectedGoogleUser) {
       toast({
         variant: "destructive",
-        title: "กรุณาระบุอีเมล",
-        description: "กรอกอีเมล หรือกด 'ลงชื่อเข้าใช้ด้วย Google' เพื่อดึงอีเมลอัตโนมัติ",
+        title: "กรุณาเชื่อมต่อบัญชี Google",
+        description: "กดปุ่ม 'ลงชื่อเข้าใช้ด้วย Google' ด้านบนเพื่อเชื่อมต่อบัญชีก่อนลงทะเบียน",
       });
       return;
     }
@@ -121,7 +120,7 @@ export default function Register() {
       toast({
         variant: "destructive",
         title: "กรุณากำหนดรหัสผ่าน",
-        description: "กำหนดรหัสผ่านอย่างน้อย 6 ตัวอักษร เพื่อใช้เข้าสู่ระบบด้วยอีเมล",
+        description: "กำหนดรหัสผ่านอย่างน้อย 6 ตัวอักษร สำหรับเข้าใช้งานเว็บ EduConnect360",
       });
       return;
     }
@@ -172,23 +171,13 @@ export default function Register() {
         subDistrict: subDistrict.trim() || undefined,
       };
 
-      if (selectedGoogleUser) {
-        await registerTeacherWithGoogle(
-          selectedGoogleUser,
-          displayName.trim(),
-          inviteCode.trim(),
-          schoolInfo,
-          password
-        );
-      } else {
-        await registerTeacherWithEmail(
-          cleanEmail,
-          password,
-          displayName.trim(),
-          inviteCode.trim(),
-          schoolInfo
-        );
-      }
+      await registerTeacherWithGoogle(
+        selectedGoogleUser,
+        displayName.trim(),
+        inviteCode.trim(),
+        schoolInfo,
+        password
+      );
 
       toast({
         title: "ลงทะเบียนบุคลากรสำเร็จ",
@@ -440,31 +429,13 @@ export default function Register() {
               )}
             </div>
 
-            {/* Section 3: ข้อมูลบัญชีและรหัสผ่านสำหรับเข้าสู่ระบบ (ตามคำขอ) */}
+            {/* Section 3: กำหนดรหัสผ่านสำหรับเข้าใช้งานระบบเว็บ */}
             <div className="space-y-3.5 pt-1">
-              {/* อีเมล */}
-              <div>
-                <label className="block text-xs font-semibold text-foreground mb-1.5">
-                  อีเมลสำหรับเข้าสู่ระบบ
-                </label>
-                <div className="relative">
-                  <input
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="teacher@school.ac.th"
-                    className="w-full px-4 py-2.5 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm placeholder:text-muted-foreground/70"
-                  />
-                  <i className="fa-solid fa-envelope absolute right-3.5 top-3.5 text-muted-foreground/60 text-xs pointer-events-none" />
-                </div>
-              </div>
-
-              {/* รหัสผ่าน & ยืนยันรหัสผ่าน (เพิ่มช่องรหัสผ่านตามภาพ 2) */}
+              {/* รหัสผ่าน & ยืนยันรหัสผ่าน */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-start">
                 <div>
                   <label className="block text-xs font-semibold text-foreground mb-1.5">
-                    รหัสผ่าน (อย่างน้อย 6 ตัวอักษร)
+                    กำหนดรหัสผ่าน (อย่างน้อย 6 ตัวอักษร)
                   </label>
                   <div className="relative">
                     <input
@@ -496,6 +467,14 @@ export default function Register() {
                     />
                     <i className="fa-solid fa-shield-check absolute right-3.5 top-3.5 text-muted-foreground/60 text-xs pointer-events-none" />
                   </div>
+                </div>
+              </div>
+
+              {/* ข้อความคำแนะนำ: รหัสผ่านของเว็บเรา ซึ่งไม่เกี่ยวกับรหัส Email ของผู้ใช้งาน */}
+              <div className="p-3 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800/50 flex items-start gap-2.5 text-amber-900 dark:text-amber-200 text-xs">
+                <i className="fa-solid fa-circle-info text-amber-600 dark:text-amber-400 mt-0.5 text-sm shrink-0" />
+                <div className="leading-relaxed">
+                  <span className="font-semibold">คำแนะนำการตั้งรหัสผ่าน:</span> รหัสผ่านนี้เป็นรหัสสำหรับเข้าสู่ระบบของ <strong>EduConnect360</strong> เท่านั้น <span className="underline font-medium">ซึ่งไม่เกี่ยวข้องกับรหัสผ่าน Email ของผู้ใช้งาน</span> เพื่อความปลอดภัยในการใช้งาน
                 </div>
               </div>
 
