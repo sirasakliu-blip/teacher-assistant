@@ -91,7 +91,7 @@ export default function AdminRegister() {
                 required
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="อาจารย์ศิรศักดิ์ ผู้ดูแลระบบ"
+                placeholder="กรุณาใส่ชื่อ - สกุล"
                 className="w-full px-4 py-2.5 rounded-xl bg-background/60 border border-border focus:outline-none focus:ring-2 focus:ring-primary/80 text-foreground text-sm"
               />
             </div>
