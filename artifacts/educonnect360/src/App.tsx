@@ -8,6 +8,7 @@ import Register from '@/pages/register';
 import AdminRegister from '@/pages/admin-register';
 import AdminVerifyEmail from '@/pages/admin-verify-email';
 import ParentView from '@/pages/parent-view';
+import ParentLiff from '@/pages/parent-liff';
 import TeacherHome from '@/pages/teacher-home';
 import TeacherClass from '@/pages/teacher-class';
 import TeacherGradebook from '@/pages/teacher-gradebook';
@@ -32,6 +33,7 @@ function Router() {
       <Route path="/admin-register" component={AdminRegister} />
       <Route path="/admin-verify-email" component={AdminVerifyEmail} />
       <Route path="/parent-view" component={ParentView} />
+      <Route path="/parent-liff" component={ParentLiff} />
 
       <Route path="/teacher">
         <ProtectedRoute role="teacher">
