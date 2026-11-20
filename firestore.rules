@@ -128,5 +128,22 @@ service cloud.firestore {
       allow read, create: if isAuthenticated();
       allow update, delete: if isTeacher();
     }
+
+    // =========================================================================
+    // 7. Student Summaries (Pre-aggregated for LINE Webhook & Instant View)
+    // =========================================================================
+    match /student_summaries/{studentUid} {
+      // Read allowed for anyone (LINE Webhook & Parent View)
+      allow read: if true;
+      // Write allowed for authenticated teachers, students, admins
+      allow write: if isAuthenticated();
+    }
+
+    // =========================================================================
+    // 8. Parent LINE Links (LINE User ID to Student Binding)
+    // =========================================================================
+    match /parent_line_links/{lineUserId} {
+      allow read, write: if true;
+    }
   }
 }

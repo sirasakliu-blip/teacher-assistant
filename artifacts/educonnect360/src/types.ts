@@ -15,9 +15,12 @@ export interface User {
   email: string;
   displayName: string;
   fullName?: string;
+  searchName?: string; // Normalized first name without prefixes for smart search
+  normalizedFullName?: string; // Full name without prefixes
   photoURL?: string | null;
   role: UserRole;
   studentId?: string; // e.g. "67105"
+  gradeLevel?: string; // e.g. "ม.3/1"
   parentViewToken?: string; // Token for parent access
   inviteCodeUsed?: string; // The teacher invite code used to register
   linkedStudentIds?: string[]; // Student UIDs linked to parent account
@@ -175,3 +178,49 @@ export interface LeaveRequest {
   createdAt: string;
   reviewedAt?: string | null;
 }
+
+/** Pre-aggregated student summary for instant LINE Webhook & Parent View lookup. */
+export interface StudentSummary {
+  id?: string;
+  studentUid: string;
+  studentId: string;
+  fullName: string;
+  searchName: string;
+  normalizedFullName?: string;
+  gradeLevel?: string;
+  todayAttendance: {
+    status: AttendanceStatus | "none";
+    date: string; // ISO Date YYYY-MM-DD
+    time?: string; // e.g. "08:15 น."
+    className?: string;
+  };
+  attendanceStats: {
+    present: number;
+    late: number;
+    excused: number;
+    absent: number;
+    total: number;
+    rate: number;
+  };
+  grades: Array<{
+    assignmentId?: string;
+    subjectName: string;
+    score: number;
+    maxScore: number;
+    grade: string; // e.g. "4", "3.5", "3"
+  }>;
+  gpa?: number;
+  parentViewToken?: string;
+  updatedAt: string;
+}
+
+/** Link between a LINE User ID and their active student record. */
+export interface ParentLineLink {
+  id?: string;
+  lineUserId: string;
+  studentUid: string;
+  studentId: string;
+  studentName: string;
+  linkedAt: string;
+}
+
