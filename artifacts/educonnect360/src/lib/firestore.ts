@@ -167,6 +167,10 @@ export async function getUserProfile(uid: string): Promise<User | null> {
     fullName: data.fullName || data.displayName,
     role: data.role,
     studentId: data.studentId,
+    gradeLevel: data.gradeLevel || null,
+    advisorRoom: data.advisorRoom || data.gradeLevel || null,
+    phoneNumber: data.phoneNumber || "",
+    lineId: data.lineId || "",
     parentViewToken: data.parentViewToken,
     inviteCodeUsed: data.inviteCodeUsed,
     linkedStudentIds: (data.linkedStudentIds as string[]) ?? [],
@@ -1619,6 +1623,10 @@ export async function getAllUsers(): Promise<User[]> {
         photoURL: data.photoURL ?? null,
         role: data.role,
         studentId: data.studentId,
+        gradeLevel: data.gradeLevel || null,
+        advisorRoom: data.advisorRoom || data.gradeLevel || null,
+        phoneNumber: data.phoneNumber || "",
+        lineId: data.lineId || "",
         parentViewToken: data.parentViewToken,
         inviteCodeUsed: data.inviteCodeUsed,
         linkedStudentIds: (data.linkedStudentIds as string[]) ?? [],
@@ -2344,7 +2352,7 @@ export async function createStudentAccountByStaff(input: {
 /** Updates a teacher's contact details (Name, Phone number, LINE ID). */
 export async function updateTeacherContactProfile(
   teacherUid: string,
-  data: { displayName?: string; phoneNumber?: string; lineId?: string },
+  data: { displayName?: string; phoneNumber?: string; lineId?: string; advisorRoom?: string },
 ): Promise<void> {
   const database = requireDb();
   const ref = doc(database, "users", teacherUid);
@@ -2355,6 +2363,10 @@ export async function updateTeacherContactProfile(
   if (data.displayName !== undefined) payload.fullName = data.displayName.trim();
   if (data.phoneNumber !== undefined) payload.phoneNumber = data.phoneNumber.trim();
   if (data.lineId !== undefined) payload.lineId = data.lineId.trim();
+  if (data.advisorRoom !== undefined) {
+    payload.advisorRoom = data.advisorRoom.trim();
+    payload.gradeLevel = data.advisorRoom.trim();
+  }
 
   await setDoc(ref, payload, { merge: true });
 }

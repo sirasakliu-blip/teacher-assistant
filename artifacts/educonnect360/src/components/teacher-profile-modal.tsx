@@ -3,30 +3,39 @@ import { createPortal } from "react-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { updateTeacherContactProfile } from "@/lib/firestore";
+import type { User } from "@/types";
 
 interface TeacherProfileModalProps {
   open: boolean;
   onClose: () => void;
   onSuccess?: () => void;
+  targetUser?: User | null;
 }
 
-export function TeacherProfileModal({ open, onClose, onSuccess }: TeacherProfileModalProps) {
+export function TeacherProfileModal({ open, onClose, onSuccess, targetUser }: TeacherProfileModalProps) {
   const { profile, firebaseUser, refreshProfile } = useAuth();
   const { toast } = useToast();
   const [displayName, setDisplayName] = useState("");
+  const [advisorRoom, setAdvisorRoom] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [lineId, setLineId] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (profile) {
+    if (targetUser) {
+      setDisplayName(targetUser.fullName || targetUser.displayName || "");
+      setAdvisorRoom(targetUser.advisorRoom || targetUser.gradeLevel || "");
+      setPhoneNumber(targetUser.phoneNumber || "");
+      setLineId(targetUser.lineId || "");
+    } else if (profile) {
       setDisplayName(profile.displayName || profile.fullName || "");
+      setAdvisorRoom(profile.advisorRoom || profile.gradeLevel || "");
       setPhoneNumber(profile.phoneNumber || "");
       setLineId(profile.lineId || "");
     } else if (firebaseUser) {
       setDisplayName(firebaseUser.displayName || "");
     }
-  }, [profile, firebaseUser, open]);
+  }, [targetUser, profile, firebaseUser, open]);
 
   // Lock scroll & ESC key to close
   useEffect(() => {
@@ -46,7 +55,7 @@ export function TeacherProfileModal({ open, onClose, onSuccess }: TeacherProfile
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    const targetUid = profile?.id || profile?.uid || firebaseUser?.uid;
+    const targetUid = targetUser?.id || profile?.id || profile?.uid || firebaseUser?.uid;
     if (!targetUid) {
       toast({
         variant: "destructive",
@@ -68,6 +77,7 @@ export function TeacherProfileModal({ open, onClose, onSuccess }: TeacherProfile
     try {
       await updateTeacherContactProfile(targetUid, {
         displayName: displayName.trim(),
+        advisorRoom: advisorRoom.trim(),
         phoneNumber: phoneNumber.trim(),
         lineId: lineId.trim(),
       });
@@ -77,8 +87,8 @@ export function TeacherProfileModal({ open, onClose, onSuccess }: TeacherProfile
       }
 
       toast({
-        title: "บันทึกข้อมูลติดต่อครูสำเร็จ",
-        description: "ผู้ปกครองจะสามารถดูเบอร์โทรและ LINE ID ของท่านใน LINE ได้ทันที",
+        title: "บันทึกข้อมูลคุณครูสำเร็จ",
+        description: "ข้อมูลและห้องที่ปรึกษาถูกอัปเดตเรียบร้อยแล้ว",
       });
 
       if (onSuccess) onSuccess();
@@ -114,9 +124,11 @@ export function TeacherProfileModal({ open, onClose, onSuccess }: TeacherProfile
               <i className="fa-solid fa-address-card text-lg" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-foreground">ข้อมูลติดต่อคุณครู</h2>
+              <h2 className="text-lg font-bold text-foreground">
+                {targetUser ? "แก้ไขข้อมูลคุณครู & ห้องที่ปรึกษา" : "ข้อมูลติดต่อคุณครู"}
+              </h2>
               <p className="text-xs text-muted-foreground">
-                ข้อมูลนี้จะแสดงให้ผู้ปกครองติดต่อใน LINE Official Account
+                {targetUser ? `แก้ไขข้อมูลและกำหนดห้องที่ปรึกษาของ ${targetUser.fullName || targetUser.displayName}` : "ข้อมูลนี้จะแสดงให้ผู้ปกครองติดต่อใน LINE Official Account"}
               </p>
             </div>
           </div>
@@ -143,6 +155,23 @@ export function TeacherProfileModal({ open, onClose, onSuccess }: TeacherProfile
               placeholder="เช่น คุณครูสมชาย ใจดี"
               className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground"
             />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-foreground mb-1.5 flex items-center gap-1.5">
+              <i className="fa-solid fa-chalkboard-user text-primary" />
+              ครูประจำชั้น / ครูที่ปรึกษา (ชั้น/ห้อง)
+            </label>
+            <input
+              type="text"
+              value={advisorRoom}
+              onChange={(e) => setAdvisorRoom(e.target.value)}
+              placeholder="เช่น ม.2/1 หรือ ม.1/3"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground"
+            />
+            <p className="text-[11px] text-muted-foreground mt-1">
+              ระบุห้องเรียนที่ท่านเป็นที่ปรึกษา เช่น ม.2/1 เพื่อแสดงในระบบ
+            </p>
           </div>
 
           <div>

@@ -65,6 +65,11 @@ export function TeacherNav() {
         </button>
         <span className="hidden sm:flex items-center gap-2 text-sm font-medium text-muted-foreground">
           <i className="fa-solid fa-chalkboard-user text-primary" /> {profile?.displayName}
+          {(profile?.advisorRoom || profile?.gradeLevel) && (
+            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-teal-50 text-teal-700 border border-teal-200">
+              ที่ปรึกษา {profile.advisorRoom || profile.gradeLevel}
+            </span>
+          )}
           {profile?.role === "admin" && (
             <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200">
               Admin

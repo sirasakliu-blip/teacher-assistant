@@ -22,7 +22,8 @@ export interface User {
   photoURL?: string | null;
   role: UserRole;
   studentId?: string; // e.g. "67105"
-  gradeLevel?: string; // e.g. "ม.3/1"
+  gradeLevel?: string; // e.g. "ม.3/1" (สำหรับนักเรียน: ชั้นเรียน / สำหรับครู: ห้องที่ปรึกษา)
+  advisorRoom?: string; // e.g. "ม.2/1" (สำหรับครู: ครูประจำชั้น / ครูที่ปรึกษา)
   schoolName?: string; // e.g. "โรงเรียนเตรียมอุดมศึกษา"
   address?: string; // ที่ตั้งสถานศึกษา เช่น เลขที่ 99 ถ.พญาไท
   moo?: string; // หมู่ที่ เช่น "หมู่ 1" หรือ "-"

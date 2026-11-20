@@ -78,6 +78,7 @@ export default function AdminDashboard() {
   const [resettingTokenForStudent, setResettingTokenForStudent] = useState<string | null>(null);
   const [showCreateStudent, setShowCreateStudent] = useState(false);
   const [showContactModal, setShowContactModal] = useState(false);
+  const [editingTeacherUser, setEditingTeacherUser] = useState<User | null>(null);
 
   // Subscribe to Teacher Invites
   useEffect(() => {
@@ -601,11 +602,17 @@ export default function AdminDashboard() {
     return true;
   });
 
+  const studentCount = users.filter((u) => u.role === "student").length;
+  const teacherCount = users.filter((u) => u.role === "teacher").length;
+  const adminCount = users.filter((u) => u.role === "admin").length;
+
   const filteredUsers = users.filter((u) => {
-    const nameMatch = (u.fullName || u.displayName || "").toLowerCase().includes(userSearch.toLowerCase());
-    const emailMatch = (u.email || "").toLowerCase().includes(userSearch.toLowerCase());
-    const studentIdMatch = (u.studentId || "").toLowerCase().includes(userSearch.toLowerCase());
-    const matchesSearch = nameMatch || emailMatch || studentIdMatch;
+    const query = userSearch.toLowerCase();
+    const nameMatch = (u.fullName || u.displayName || "").toLowerCase().includes(query);
+    const emailMatch = (u.email || "").toLowerCase().includes(query);
+    const studentIdMatch = (u.studentId || "").toLowerCase().includes(query);
+    const roomMatch = (u.gradeLevel || "").toLowerCase().includes(query) || (u.advisorRoom || "").toLowerCase().includes(query);
+    const matchesSearch = nameMatch || emailMatch || studentIdMatch || roomMatch;
 
     if (!matchesSearch) return false;
     if (userRoleFilter === "all") return true;
@@ -1215,30 +1222,50 @@ export default function AdminDashboard() {
                       className="pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 min-w-[200px]"
                     />
                   </div>
-                  <div className="flex rounded-lg border border-slate-200 p-0.5 bg-slate-50 text-xs">
+                  <div className="flex rounded-xl border border-slate-200 p-1 bg-slate-100/70 text-xs gap-1">
                     <button
                       onClick={() => setUserRoleFilter("all")}
-                      className={`px-2.5 py-1 rounded-md transition ${userRoleFilter === "all" ? "bg-white font-semibold text-slate-900 shadow-sm" : "text-slate-600"}`}
+                      className={`px-3 py-1.5 rounded-lg transition font-medium flex items-center gap-1.5 ${
+                        userRoleFilter === "all"
+                          ? "bg-white font-semibold text-slate-900 shadow-sm"
+                          : "text-slate-600 hover:text-slate-900"
+                      }`}
                     >
-                      ทั้งหมด
+                      <i className="fa-solid fa-users text-slate-400" />
+                      ทั้งหมด ({users.length})
                     </button>
                     <button
                       onClick={() => setUserRoleFilter("student")}
-                      className={`px-2.5 py-1 rounded-md transition ${userRoleFilter === "student" ? "bg-white font-semibold text-emerald-700 shadow-sm" : "text-slate-600"}`}
+                      className={`px-3 py-1.5 rounded-lg transition font-medium flex items-center gap-1.5 ${
+                        userRoleFilter === "student"
+                          ? "bg-emerald-600 font-semibold text-white shadow-sm"
+                          : "text-slate-600 hover:text-emerald-700"
+                      }`}
                     >
-                      นักเรียน
+                      <i className="fa-solid fa-graduation-cap" />
+                      นักเรียน ({studentCount})
                     </button>
                     <button
                       onClick={() => setUserRoleFilter("teacher")}
-                      className={`px-2.5 py-1 rounded-md transition ${userRoleFilter === "teacher" ? "bg-white font-semibold text-teal-700 shadow-sm" : "text-slate-600"}`}
+                      className={`px-3 py-1.5 rounded-lg transition font-medium flex items-center gap-1.5 ${
+                        userRoleFilter === "teacher"
+                          ? "bg-teal-600 font-semibold text-white shadow-sm"
+                          : "text-slate-600 hover:text-teal-700"
+                      }`}
                     >
-                      ครู
+                      <i className="fa-solid fa-chalkboard-user" />
+                      ครูและบุคลากร ({teacherCount})
                     </button>
                     <button
                       onClick={() => setUserRoleFilter("admin")}
-                      className={`px-2.5 py-1 rounded-md transition ${userRoleFilter === "admin" ? "bg-white font-semibold text-purple-700 shadow-sm" : "text-slate-600"}`}
+                      className={`px-3 py-1.5 rounded-lg transition font-medium flex items-center gap-1.5 ${
+                        userRoleFilter === "admin"
+                          ? "bg-purple-600 font-semibold text-white shadow-sm"
+                          : "text-slate-600 hover:text-purple-700"
+                      }`}
                     >
-                      แอดมิน
+                      <i className="fa-solid fa-shield-halved" />
+                      แอดมิน ({adminCount})
                     </button>
                   </div>
                 </div>
@@ -1260,8 +1287,8 @@ export default function AdminDashboard() {
                       <tr>
                         <th className="py-3 px-4">ผู้ใช้งาน</th>
                         <th className="py-3 px-4">บทบาท</th>
-                        <th className="py-3 px-4">ข้อมูลระบุตัวตน</th>
-                        <th className="py-3 px-4">โทเค็นผู้ปกครอง (Magic Link)</th>
+                        <th className="py-3 px-4">ชั้นเรียน / ห้องที่ปรึกษา</th>
+                        <th className="py-3 px-4">ข้อมูลระบุตัวตน / โทเค็น</th>
                         <th className="py-3 px-4">วันที่ลงทะเบียน</th>
                         <th className="py-3 px-4 text-right">การจัดการ</th>
                       </tr>
@@ -1270,6 +1297,8 @@ export default function AdminDashboard() {
                       {filteredUsers.map((u) => {
                         const tokenInfo = parentTokens.find((pt) => pt.studentUid === u.id || pt.token === u.parentViewToken);
                         const isStudent = u.role === "student";
+                        const isTeacher = u.role === "teacher";
+                        const isAdmin = u.role === "admin";
 
                         return (
                           <tr key={u.id} className="hover:bg-slate-50/60 transition">
@@ -1278,16 +1307,19 @@ export default function AdminDashboard() {
                               <p className="text-[10px] text-slate-400 font-mono truncate max-w-[150px]">UID: {u.id}</p>
                             </td>
                             <td className="py-3 px-4">
-                              {u.role === "student" ? (
+                              {isStudent ? (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-emerald-700 bg-emerald-50 border border-emerald-200 font-medium">
+                                  <i className="fa-solid fa-graduation-cap mr-1 text-[10px]" />
                                   นักเรียน
                                 </span>
-                              ) : u.role === "teacher" ? (
+                              ) : isTeacher ? (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-teal-700 bg-teal-50 border border-teal-200 font-medium">
-                                  ครู
+                                  <i className="fa-solid fa-chalkboard-user mr-1 text-[10px]" />
+                                  คุณครู
                                 </span>
-                              ) : u.role === "admin" ? (
+                              ) : isAdmin ? (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-purple-700 bg-purple-50 border border-purple-200 font-medium">
+                                  <i className="fa-solid fa-shield-halved mr-1 text-[10px]" />
                                   ผู้ดูแลระบบ
                                 </span>
                               ) : (
@@ -1298,84 +1330,149 @@ export default function AdminDashboard() {
                             </td>
                             <td className="py-3 px-4">
                               {isStudent ? (
-                                <div>
-                                  <span className="font-mono font-medium text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                                    รหัส: {u.studentId || "-"}
+                                u.gradeLevel ? (
+                                  <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-sm">
+                                    <i className="fa-solid fa-door-open mr-1 text-emerald-600" />
+                                    ห้อง {u.gradeLevel}
                                   </span>
-                                </div>
+                                ) : (
+                                  <span className="text-slate-400 text-xs italic">ยังไม่ระบุห้อง</span>
+                                )
+                              ) : isTeacher ? (
+                                (u.advisorRoom || u.gradeLevel) ? (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-teal-50 text-teal-800 border border-teal-200 shadow-sm">
+                                      <i className="fa-solid fa-id-badge mr-1.5 text-teal-600" />
+                                      ที่ปรึกษา {u.advisorRoom || u.gradeLevel}
+                                    </span>
+                                    <button
+                                      onClick={() => setEditingTeacherUser(u)}
+                                      title="แก้ไขห้องที่ปรึกษา"
+                                      className="px-1.5 py-0.5 text-xs text-teal-700 hover:text-teal-900 bg-teal-50 hover:bg-teal-100 rounded border border-teal-200 transition cursor-pointer"
+                                    >
+                                      <i className="fa-solid fa-pen text-[10px]" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => setEditingTeacherUser(u)}
+                                    className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium text-teal-700 bg-teal-50/80 hover:bg-teal-100 border border-dashed border-teal-300 transition cursor-pointer"
+                                  >
+                                    <i className="fa-solid fa-plus mr-1" /> กำหนดห้องที่ปรึกษา
+                                  </button>
+                                )
                               ) : (
-                                <span className="text-slate-600">{u.email}</span>
+                                <span className="text-slate-400 text-xs">-</span>
                               )}
                             </td>
                             <td className="py-3 px-4">
                               {isStudent ? (
-                                tokenInfo ? (
-                                  <div className="space-y-1">
-                                    <div className="flex items-center gap-1.5">
-                                      <span
-                                        className={`inline-block w-2 h-2 rounded-full ${
-                                          tokenInfo.isActive ? "bg-emerald-500" : "bg-rose-400"
-                                        }`}
-                                      />
-                                      <span className="font-mono text-[11px] text-slate-600">
-                                        {tokenInfo.token.slice(0, 10)}...
-                                      </span>
-                                      <span className={`text-[10px] px-1.5 py-0.2 rounded font-medium ${
-                                        tokenInfo.isActive ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-slate-100 text-slate-500"
-                                      }`}>
-                                        {tokenInfo.isActive ? "เปิด" : "ปิด"}
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                      <button
-                                        onClick={() => handleCopyParentLink(tokenInfo.token)}
-                                        title="คัดลอกลิงก์ผู้ปกครอง"
-                                        className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] transition"
-                                      >
-                                        <i className="fa-solid fa-copy mr-1" /> ลิงก์
-                                      </button>
-                                      <button
-                                        onClick={() => handleToggleToken(tokenInfo.token, tokenInfo.isActive)}
-                                        disabled={togglingToken === tokenInfo.token}
-                                        title={tokenInfo.isActive ? "ปิดการเข้าถึง" : "เปิดการเข้าถึง"}
-                                        className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] transition"
-                                      >
-                                        {tokenInfo.isActive ? "ปิดใช้งาน" : "เปิดใช้งาน"}
-                                      </button>
-                                      <button
-                                        onClick={() => handleResetToken(u.id, u.fullName || u.displayName || "")}
-                                        disabled={resettingTokenForStudent === u.id}
-                                        title="สร้างลิงก์ใหม่ (รีเซ็ต)"
-                                        className="px-1.5 py-0.5 rounded bg-amber-50 hover:bg-amber-100 text-amber-700 text-[10px] transition"
-                                      >
-                                        <i className="fa-solid fa-rotate mr-0.5" /> รีเซ็ต
-                                      </button>
-                                    </div>
+                                <div className="space-y-1.5">
+                                  <div>
+                                    <span className="font-mono font-medium text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 text-xs">
+                                      รหัส: {u.studentId || "-"}
+                                    </span>
                                   </div>
-                                ) : (
-                                  <button
-                                    onClick={() => handleResetToken(u.id, u.fullName || u.displayName || "")}
-                                    disabled={resettingTokenForStudent === u.id}
-                                    className="px-2 py-1 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[10px] font-medium transition"
-                                  >
-                                    + สร้างลิงก์ผู้ปกครอง
-                                  </button>
-                                )
+                                  {tokenInfo ? (
+                                    <div className="space-y-1">
+                                      <div className="flex items-center gap-1.5">
+                                        <span
+                                          className={`inline-block w-2 h-2 rounded-full ${
+                                            tokenInfo.isActive ? "bg-emerald-500" : "bg-rose-400"
+                                          }`}
+                                        />
+                                        <span className="font-mono text-[11px] text-slate-600">
+                                          {tokenInfo.token.slice(0, 10)}...
+                                        </span>
+                                        <span className={`text-[10px] px-1.5 py-0.2 rounded font-medium ${
+                                          tokenInfo.isActive ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-slate-100 text-slate-500"
+                                        }`}>
+                                          {tokenInfo.isActive ? "เปิด" : "ปิด"}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        <button
+                                          onClick={() => handleCopyParentLink(tokenInfo.token)}
+                                          title="คัดลอกลิงก์ผู้ปกครอง"
+                                          className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] transition cursor-pointer"
+                                        >
+                                          <i className="fa-solid fa-copy mr-1" /> ลิงก์
+                                        </button>
+                                        <button
+                                          onClick={() => handleToggleToken(tokenInfo.token, tokenInfo.isActive)}
+                                          disabled={togglingToken === tokenInfo.token}
+                                          title={tokenInfo.isActive ? "ปิดการเข้าถึง" : "เปิดการเข้าถึง"}
+                                          className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] transition cursor-pointer"
+                                        >
+                                          {tokenInfo.isActive ? "ปิดใช้งาน" : "เปิดใช้งาน"}
+                                        </button>
+                                        <button
+                                          onClick={() => handleResetToken(u.id, u.fullName || u.displayName || "")}
+                                          disabled={resettingTokenForStudent === u.id}
+                                          title="สร้างลิงก์ใหม่ (รีเซ็ต)"
+                                          className="px-1.5 py-0.5 rounded bg-amber-50 hover:bg-amber-100 text-amber-700 text-[10px] transition cursor-pointer"
+                                        >
+                                          <i className="fa-solid fa-rotate mr-0.5" /> รีเซ็ต
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleResetToken(u.id, u.fullName || u.displayName || "")}
+                                      disabled={resettingTokenForStudent === u.id}
+                                      className="px-2 py-1 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[10px] font-medium transition cursor-pointer"
+                                    >
+                                      + สร้างลิงก์ผู้ปกครอง
+                                    </button>
+                                  )}
+                                </div>
                               ) : (
-                                <span className="text-slate-400">-</span>
+                                <div className="space-y-0.5">
+                                  <div className="text-slate-700 font-medium text-xs flex items-center gap-1.5">
+                                    <i className="fa-regular fa-envelope text-slate-400 text-[11px]" />
+                                    {u.email || "-"}
+                                  </div>
+                                  {(u.phoneNumber || u.lineId) && (
+                                    <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                                      {u.phoneNumber && (
+                                        <span>
+                                          <i className="fa-solid fa-phone text-slate-400 mr-0.5" />
+                                          {u.phoneNumber}
+                                        </span>
+                                      )}
+                                      {u.lineId && (
+                                        <span>
+                                          <i className="fa-brands fa-line text-emerald-500 mr-0.5" />
+                                          {u.lineId}
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
                               )}
                             </td>
                             <td className="py-3 px-4 text-slate-500">
                               {u.createdAt ? new Date(u.createdAt).toLocaleDateString("th-TH") : "-"}
                             </td>
                             <td className="py-3 px-4 text-right">
-                              <button
-                                onClick={() => handleDeleteUser(u.id, u.fullName || u.displayName || u.email)}
-                                disabled={deletingUserId === u.id}
-                                className="px-2 py-1 rounded bg-rose-50 hover:bg-rose-100 text-rose-600 transition disabled:opacity-50 text-xs font-medium"
-                              >
-                                <i className="fa-solid fa-trash-can mr-1" /> ลบผู้ใช้
-                              </button>
+                              <div className="flex items-center justify-end gap-1.5">
+                                {isTeacher && (
+                                  <button
+                                    onClick={() => setEditingTeacherUser(u)}
+                                    className="px-2.5 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-700 transition text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                                    title="แก้ไขข้อมูลคุณครูและห้องที่ปรึกษา"
+                                  >
+                                    <i className="fa-solid fa-pen-to-square" /> แก้ไขที่ปรึกษา
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => handleDeleteUser(u.id, u.fullName || u.displayName || u.email)}
+                                  disabled={deletingUserId === u.id}
+                                  className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 transition disabled:opacity-50 text-xs font-medium cursor-pointer"
+                                >
+                                  <i className="fa-solid fa-trash-can mr-1" /> ลบ
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -1570,6 +1667,13 @@ export default function AdminDashboard() {
       <TeacherProfileModal
         open={showContactModal}
         onClose={() => setShowContactModal(false)}
+      />
+
+      <TeacherProfileModal
+        open={!!editingTeacherUser}
+        targetUser={editingTeacherUser}
+        onClose={() => setEditingTeacherUser(null)}
+        onSuccess={() => loadUsersAndTokens()}
       />
     </div>
   );
