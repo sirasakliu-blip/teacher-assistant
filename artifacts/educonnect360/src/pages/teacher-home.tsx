@@ -130,6 +130,12 @@ export default function TeacherHome() {
           }}
         />
       )}
+
+      <CreateStudentDialog
+        open={showAddStudent}
+        onClose={() => setShowAddStudent(false)}
+        onSuccess={() => refresh()}
+      />
     </div>
   );
 }
@@ -233,13 +239,6 @@ function CreateClassModal({
           </button>
         </form>
       </div>
-
-      <CreateStudentDialog
-        open={showAddStudent}
-        onClose={() => setShowAddStudent(false)}
-        onSuccess={() => refresh()}
-      />
-    </div>
     </div>
   );
 }
